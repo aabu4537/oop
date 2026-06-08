@@ -31,7 +31,7 @@ Docker + Railway (free tier)
 | 1 | ETL + PostgreSQL Schema | ✅ Complete |
 | 2 | Feature Engineering (off-ball metrics) | ✅ Complete |
 | 3 | ML Modeling (Logistic Regression + XGBoost) | ✅ Complete |
-| 4 | Monte Carlo Simulation Engine | 🔜 Planned |
+| 4 | Monte Carlo Simulation Engine | ✅ Complete |
 | 5 | FastAPI Backend | 🔜 Planned |
 | 6 | Streamlit Dashboard + Deployment | 🔜 Planned |
 
@@ -107,6 +107,14 @@ python -m src.models.train
 # Generate predictions for all matches (uses XGBoost by default)
 python -m src.models.predict
 python -m src.models.predict --model lr_v1.0
+```
+
+### Run Monte Carlo simulation (Phase 4)
+
+```bash
+# Simulate 2026 World Cup 10 000 times (sample groups included)
+python -m src.simulation.engine
+python -m src.simulation.engine --sims 50000 --seed 0
 ```
 
 ### Run tests
