@@ -23,7 +23,7 @@ export function Nav() {
           className="font-bold text-white mr-6 flex items-center gap-2 text-sm shrink-0"
         >
           <span className="text-lg">⚽</span>
-          Football Analytics
+          Raumdeuter
         </Link>
         <div className="flex items-center gap-0.5 overflow-x-auto">
           {links.map(({ href, label }) => (

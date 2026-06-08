@@ -3,7 +3,7 @@ import "./globals.css";
 import { Nav } from "@/components/nav";
 
 export const metadata: Metadata = {
-  title: "Football Analytics",
+  title: "Raumdeuter",
   description: "World Cup prediction and simulation platform",
 };
 
