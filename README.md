@@ -30,7 +30,7 @@ Docker + Railway (free tier)
 |-------|-------------|--------|
 | 1 | ETL + PostgreSQL Schema | ✅ Complete |
 | 2 | Feature Engineering (off-ball metrics) | ✅ Complete |
-| 3 | ML Modeling (Logistic Regression + XGBoost) | 🔜 Planned |
+| 3 | ML Modeling (Logistic Regression + XGBoost) | ✅ Complete |
 | 4 | Monte Carlo Simulation Engine | 🔜 Planned |
 | 5 | FastAPI Backend | 🔜 Planned |
 | 6 | Streamlit Dashboard + Deployment | 🔜 Planned |
@@ -96,6 +96,17 @@ python -m src.etl.ingest_statsbomb
 ```bash
 # Compute off-ball metrics for all unprocessed matches
 python -m src.features.compute_metrics
+```
+
+### Train models (Phase 3)
+
+```bash
+# Train LR + XGBoost, saves artifacts/ to disk
+python -m src.models.train
+
+# Generate predictions for all matches (uses XGBoost by default)
+python -m src.models.predict
+python -m src.models.predict --model lr_v1.0
 ```
 
 ### Run tests
