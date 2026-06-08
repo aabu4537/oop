@@ -7,3 +7,4 @@ RUN pip install --no-cache-dir -e .
 COPY alembic/ alembic/
 COPY alembic.ini alembic.ini
 COPY src/ src/
+CMD ["alembic", "upgrade", "head"]
