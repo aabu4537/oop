@@ -29,7 +29,7 @@ Docker + Railway (free tier)
 | Phase | Description | Status |
 |-------|-------------|--------|
 | 1 | ETL + PostgreSQL Schema | ✅ Complete |
-| 2 | Feature Engineering (off-ball metrics) | 🔜 Next |
+| 2 | Feature Engineering (off-ball metrics) | ✅ Complete |
 | 3 | ML Modeling (Logistic Regression + XGBoost) | 🔜 Planned |
 | 4 | Monte Carlo Simulation Engine | 🔜 Planned |
 | 5 | FastAPI Backend | 🔜 Planned |
@@ -89,6 +89,13 @@ python -m src.etl.ingest_elo
 
 # Seed StatsBomb event data (requires statsbombpy)
 python -m src.etl.ingest_statsbomb
+```
+
+### Run feature engineering (Phase 2)
+
+```bash
+# Compute off-ball metrics for all unprocessed matches
+python -m src.features.compute_metrics
 ```
 
 ### Run tests

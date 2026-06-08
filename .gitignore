@@ -9,6 +9,5 @@ __pycache__/
 dist/
 build/
 ge_reports/
-features/
 *.joblib
 .DS_Store
