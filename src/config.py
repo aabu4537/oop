@@ -31,6 +31,8 @@ class Settings(BaseSettings):
     statsbomb_season_ids: str = "90"
     elo_base_url: str = "https://www.eloratings.net"
 
+    redis_url: str = "redis://localhost:6379/0"
+
     log_level: str = "INFO"
 
 

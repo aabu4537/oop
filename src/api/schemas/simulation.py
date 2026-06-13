@@ -14,6 +14,26 @@ class SimulateRequest(BaseModel):
     seed: int | None = None
 
 
+# Synchronous response (POST /simulate)
 class SimulateResponse(BaseModel):
     results: list[dict[str, float | str]]
     n_sims: int
+
+
+# Async job responses (POST /simulate/async + GET /simulate/async/{job_id})
+class SimulateJobResponse(BaseModel):
+    job_id: str
+    status: str  # "queued"
+
+
+class SimulateJobResult(BaseModel):
+    results: list[dict[str, float | str]]
+    n_sims: int
+    has_oop_data: bool
+
+
+class SimulateJobStatusResponse(BaseModel):
+    job_id: str
+    status: str                     # "queued" | "started" | "complete" | "failed"
+    result: SimulateJobResult | None = None
+    error: str | None = None

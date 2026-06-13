@@ -1,4 +1,4 @@
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -159,3 +159,64 @@ def test_simulate_n_sims_too_high():
 def test_simulate_missing_groups():
     r = client.post("/simulate", json={"n_sims": 500})
     assert r.status_code == 422
+
+
+# ---------------------------------------------------------------------------
+# /simulate/async — Celery async endpoints (Celery mocked, no broker needed)
+# ---------------------------------------------------------------------------
+
+def test_simulate_async_returns_job_id():
+    mock_task = MagicMock()
+    mock_task.id = "test-job-id-abc123"
+    with patch("src.api.routers.simulation.run_simulation_task") as mock_fn:
+        mock_fn.apply_async.return_value = mock_task
+        r = client.post("/simulate/async", json={"groups": _GROUPS_SINGLE, "n_sims": 200, "seed": 0})
+    assert r.status_code == 200
+    data = r.json()
+    assert data["job_id"] == "test-job-id-abc123"
+    assert data["status"] == "queued"
+
+
+def test_simulate_async_status_queued():
+    mock_async_result = MagicMock()
+    mock_async_result.state = "PENDING"
+    with patch("src.api.routers.simulation.celery_app") as mock_celery:
+        mock_celery.AsyncResult.return_value = mock_async_result
+        r = client.get("/simulate/async/test-job-id-abc123")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["job_id"] == "test-job-id-abc123"
+    assert data["status"] == "queued"
+    assert data["result"] is None
+
+
+def test_simulate_async_status_complete():
+    mock_async_result = MagicMock()
+    mock_async_result.state = "SUCCESS"
+    mock_async_result.result = {
+        "results": [{"team": "France", "champion": 0.35}],
+        "n_sims": 200,
+        "has_oop_data": False,
+    }
+    with patch("src.api.routers.simulation.celery_app") as mock_celery:
+        mock_celery.AsyncResult.return_value = mock_async_result
+        r = client.get("/simulate/async/test-job-id-abc123")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["status"] == "complete"
+    assert data["result"]["has_oop_data"] is False
+    assert data["result"]["n_sims"] == 200
+
+
+def test_simulate_async_status_failed():
+    mock_async_result = MagicMock()
+    mock_async_result.state = "FAILURE"
+    mock_async_result.result = ValueError("simulation crashed")
+    with patch("src.api.routers.simulation.celery_app") as mock_celery:
+        mock_celery.AsyncResult.return_value = mock_async_result
+        r = client.get("/simulate/async/bad-job-id")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["status"] == "failed"
+    assert data["result"] is None
+    assert "error" in data

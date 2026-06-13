@@ -31,6 +31,9 @@ dependencies = [
     "fastapi>=0.110",
     "uvicorn[standard]>=0.29",
     "pydantic>=2.6",
+    # task queue + cache
+    "celery[redis]>=5.3",
+    "redis>=5.0",
     # config
     "pydantic-settings>=2.2",
     "python-dotenv>=1.0",

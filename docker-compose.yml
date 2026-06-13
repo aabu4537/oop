@@ -16,6 +16,17 @@ services:
       timeout: 5s
       retries: 5
 
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   migrate:
     build:
       context: .
@@ -34,11 +45,31 @@ services:
     depends_on:
       migrate:
         condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    # Port kept for direct dev access; nginx on port 80 is the production entry point
     ports:
       - "8000:8000"
     environment:
       DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER:-football}:${POSTGRES_PASSWORD:-changeme}@db:5432/${POSTGRES_DB:-football_analytics}
+      REDIS_URL: redis://redis:6379/0
     command: uvicorn src.api.main:app --host 0.0.0.0 --port 8000 --reload
+
+  celery_worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER:-football}:${POSTGRES_PASSWORD:-changeme}@db:5432/${POSTGRES_DB:-football_analytics}
+      REDIS_URL: redis://redis:6379/0
+    command: celery -A src.celery_app.celery_app worker --loglevel=info --concurrency=4
 
   streamlit:
     build:
@@ -46,11 +77,24 @@ services:
       dockerfile: Dockerfile.streamlit
     depends_on:
       - api
+    # Port kept for direct dev access; nginx on port 8501 is the production entry point
     ports:
-      - "8501:8501"
+      - "8502:8501"
     environment:
       API_BASE_URL: http://api:8000
     command: streamlit run streamlit_app/app.py --server.port 8501 --server.address 0.0.0.0
+
+  nginx:
+    image: nginx:alpine
+    restart: unless-stopped
+    depends_on:
+      - api
+      - streamlit
+    ports:
+      - "80:80"       # /api/* → FastAPI
+      - "8501:8501"   # Streamlit (WebSocket-aware)
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
 
 volumes:
   postgres_data:
