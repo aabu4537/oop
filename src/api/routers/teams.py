@@ -4,9 +4,9 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from src.api.schemas.teams import TeamOut
+from src.api.schemas.teams import TeamMetricOut, TeamOut
 from src.cache import cache
-from src.db.models import Team
+from src.db.models import Team, TeamMetric
 from src.db.session import get_db
 
 router = APIRouter(prefix="/teams", tags=["teams"])
@@ -41,3 +41,18 @@ def get_team(team_id: UUID, db: Session = Depends(get_db)):
     if team is None:
         raise HTTPException(status_code=404, detail="Team not found")
     return team
+
+
+@router.get("/{team_id}/metrics", response_model=list[TeamMetricOut])
+def get_team_metrics(team_id: UUID, db: Session = Depends(get_db)):
+    """Return per-match OOP metrics for a team, newest first."""
+    team = db.get(Team, team_id)
+    if team is None:
+        raise HTTPException(status_code=404, detail="Team not found")
+    rows = (
+        db.query(TeamMetric)
+        .filter(TeamMetric.team_id == team_id)
+        .order_by(TeamMetric.computed_at.desc())
+        .all()
+    )
+    return rows

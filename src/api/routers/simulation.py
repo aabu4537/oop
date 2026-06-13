@@ -9,7 +9,13 @@ from src.api.schemas.simulation import (
 )
 from src.db.models import Team, TeamMetric
 from src.db.session import get_db
-from src.simulation.engine import Team as EngineTeam, run_monte_carlo
+from src.simulation.engine import (
+    FALLBACK_GROUPS,
+    WC_2026_GROUPS,
+    Team as EngineTeam,
+    load_groups_from_db,
+    run_monte_carlo,
+)
 
 router = APIRouter(prefix="/simulate", tags=["simulation"])
 
@@ -28,6 +34,21 @@ except ImportError:
 # ---------------------------------------------------------------------------
 # Synchronous endpoint — kept for backward compatibility and testing
 # ---------------------------------------------------------------------------
+
+@router.post("/wc2026", response_model=SimulateResponse)
+def simulate_wc2026(n_sims: int = 10_000, seed: int = 42):
+    """Run the WC 2026 simulation using live Elo + OOP data from the database.
+
+    No request body needed — pulls team ratings and OOP composites automatically.
+    Teams without StatsBomb coverage receive their confederation's average OOP boost.
+    """
+    try:
+        groups = load_groups_from_db(WC_2026_GROUPS, FALLBACK_GROUPS)
+    except Exception:
+        groups = FALLBACK_GROUPS
+    df = run_monte_carlo(groups, n_sims=n_sims, seed=seed)
+    return SimulateResponse(results=df.to_dict(orient="records"), n_sims=n_sims)
+
 
 @router.post("", response_model=SimulateResponse)
 def simulate(req: SimulateRequest):
