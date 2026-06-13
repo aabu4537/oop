@@ -6,50 +6,86 @@ from unittest.mock import MagicMock, patch
 import pandas as pd
 import pytest
 
-from src.etl.ingest_elo import _parse_elo_table
+from src.etl.ingest_elo import calculate_elos, elo_update, k_factor
 from src.etl.ingest_fifa import _load_rows
 from src.etl.validate import validate_matches_df, validate_teams_df
 
 
 # ---------------------------------------------------------------------------
-# Elo scraper tests
+# Elo calculator tests
 # ---------------------------------------------------------------------------
 
-SAMPLE_ELO_HTML = """
-<html><body>
-<table class="maintable">
-  <tr><th>Rank</th><th>Team</th><th>Flag</th><th>Elo</th></tr>
-  <tr><td>1</td><td>Spain</td><td></td><td>2104</td></tr>
-  <tr><td>2</td><td>France</td><td></td><td>2060</td></tr>
-  <tr><td>3</td><td>Brazil</td><td></td><td>2058</td></tr>
-</table>
-</body></html>
-"""
+def test_k_factor_world_cup():
+    assert k_factor("FIFA World Cup") == 60.0
+
+def test_k_factor_continental():
+    assert k_factor("UEFA Euro") == 50.0
+    assert k_factor("Copa América") == 50.0
+    assert k_factor("African Cup of Nations") == 50.0
+
+def test_k_factor_qualifier():
+    assert k_factor("FIFA World Cup qualification") == 40.0
+    assert k_factor("UEFA Euro qualification") == 40.0
+
+def test_k_factor_friendly():
+    assert k_factor("Friendly") == 20.0
+    assert k_factor(None) == 20.0
 
 
-def test_parse_elo_table_extracts_ratings():
-    ratings = _parse_elo_table(SAMPLE_ELO_HTML)
-    assert ratings["Spain"] == 2104.0
-    assert ratings["France"] == 2060.0
-    assert ratings["Brazil"] == 2058.0
+def test_elo_update_home_win_raises_home_rating():
+    r_h, r_a = elo_update(1500.0, 1500.0, 2, 1, "Friendly")
+    assert r_h > 1500.0
+    assert r_a < 1500.0
 
 
-def test_parse_elo_table_empty_html_returns_empty():
-    ratings = _parse_elo_table("<html><body></body></html>")
-    assert ratings == {}
+def test_elo_update_away_win_raises_away_rating():
+    r_h, r_a = elo_update(1500.0, 1500.0, 0, 1, "Friendly")
+    assert r_h < 1500.0
+    assert r_a > 1500.0
 
 
-def test_parse_elo_table_skips_malformed_rows():
-    html = """
-    <html><body><table class="maintable">
-      <tr><th>Rank</th><th>Team</th><th>Flag</th><th>Elo</th></tr>
-      <tr><td>1</td><td>Spain</td><td></td><td>not-a-number</td></tr>
-      <tr><td>2</td><td>France</td><td></td><td>2060</td></tr>
-    </table></body></html>
-    """
-    ratings = _parse_elo_table(html)
-    assert "Spain" not in ratings
-    assert ratings["France"] == 2060.0
+def test_elo_update_draw_favours_away_when_home_is_stronger():
+    # Home team is much stronger, so a draw is a bad result for them
+    r_h, r_a = elo_update(1800.0, 1500.0, 1, 1, "Friendly")
+    assert r_h < 1800.0
+    assert r_a > 1500.0
+
+
+def test_elo_update_ratings_are_zero_sum():
+    r_h0, r_a0 = 1600.0, 1400.0
+    r_h1, r_a1 = elo_update(r_h0, r_a0, 3, 0, "FIFA World Cup")
+    assert abs((r_h1 + r_a1) - (r_h0 + r_a0)) < 1e-9
+
+
+def test_calculate_elos_new_teams_start_at_1500():
+    class Row:
+        def __init__(self, h, a, hs, as_, c):
+            self.home_team, self.away_team = h, a
+            self.home_score, self.away_score = hs, as_
+            self.competition = c
+
+    rows = [Row("Spain", "Germany", 2, 1, "Friendly")]
+    ratings = calculate_elos(rows)
+    assert "Spain" in ratings
+    assert "Germany" in ratings
+    assert ratings["Spain"] > 1500.0
+    assert ratings["Germany"] < 1500.0
+
+
+def test_calculate_elos_processes_chronologically():
+    class Row:
+        def __init__(self, h, a, hs, as_, c):
+            self.home_team, self.away_team = h, a
+            self.home_score, self.away_score = hs, as_
+            self.competition = c
+
+    # Spain beats Germany twice; Spain's rating should compound upward
+    rows = [
+        Row("Spain", "Germany", 2, 0, "Friendly"),
+        Row("Spain", "Germany", 3, 0, "Friendly"),
+    ]
+    ratings = calculate_elos(rows)
+    assert ratings["Spain"] > 1510.0  # meaningfully above start
 
 
 # ---------------------------------------------------------------------------

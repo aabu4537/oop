@@ -1,105 +1,149 @@
-"""Elo ratings scraper — fetches current world football Elo ratings from eloratings.net.
+"""Elo rating calculator — derives current international Elo ratings from
+historical match results stored in the `matches` table.
 
-Parses the HTML table and upserts each team's Elo rating into the `teams` table.
-Designed to be re-run on any schedule; existing rows are updated in place.
+Source data: martj42/international_results (loaded via ingest_fifa.py).
+Must be run AFTER ingest_fifa.py has populated the matches table.
+
+Algorithm
+---------
+  E_home = 1 / (1 + 10 ^ ((R_away - (R_home + HOME_ADV)) / 400))
+  ΔR     = K * (S - E)
+
+K-factor schedule
+    60 — FIFA World Cup final tournament
+    50 — Major continental championships (EURO, Copa América, AFCON, AFC Asian Cup, Gold Cup)
+    40 — World Cup / continental qualifying
+    20 — Friendlies and all other matches
+
+Constants
+    Starting Elo : 1500
+    Home advantage : +100 Elo points
 """
 import logging
-import time
 from datetime import datetime, timezone
 
-import requests
-from bs4 import BeautifulSoup
+from sqlalchemy import text
 from sqlalchemy.dialects.postgresql import insert
 
-from src.config import get_settings
 from src.db.models import Team
 from src.db.session import get_session
 from src.etl.pipeline_logger import pipeline_run
 
 logger = logging.getLogger(__name__)
-settings = get_settings()
 
-_HEADERS = {
-    "User-Agent": (
-        "Mozilla/5.0 (compatible; football-analytics-bot/1.0; "
-        "+https://github.com/your-repo/football-analytics)"
+_START_ELO = 1500.0
+_HOME_ADV = 100.0
+
+_FETCH_SQL = text("""
+    SELECT
+        ht.name  AS home_team,
+        at_.name AS away_team,
+        m.home_score,
+        m.away_score,
+        m.competition
+    FROM matches m
+    JOIN teams ht  ON m.home_team_id = ht.team_id
+    JOIN teams at_ ON m.away_team_id = at_.team_id
+    WHERE m.home_score IS NOT NULL
+      AND m.away_score IS NOT NULL
+    ORDER BY m.match_date ASC
+""")
+
+
+def k_factor(tournament: str | None) -> float:
+    """Return the K-factor for a given tournament name."""
+    t = (tournament or "").lower()
+    if "qualif" in t or "qualification" in t:
+        return 40.0
+    if _is_world_cup_final(t):
+        return 60.0
+    if _is_major_continental(t):
+        return 50.0
+    return 20.0
+
+
+def _is_world_cup_final(t: str) -> bool:
+    return "world cup" in t and "qualif" not in t and "qualification" not in t
+
+
+def _is_major_continental(t: str) -> bool:
+    return any(
+        kw in t
+        for kw in (
+            "uefa euro",
+            "european championship",
+            "copa america",
+            "copa américa",
+            "africa cup of nations",
+            "african cup of nations",
+            "afc asian cup",
+            "gold cup",
+            "concacaf championship",
+            "nations league",
+        )
     )
-}
-_TIMEOUT = 15
-_RETRY_BACKOFF = [1, 2, 4]
+
+
+def elo_update(
+    r_home: float,
+    r_away: float,
+    home_score: int,
+    away_score: int,
+    tournament: str | None,
+) -> tuple[float, float]:
+    """Return updated (r_home, r_away) after one match."""
+    k = k_factor(tournament)
+    e_home = 1.0 / (1.0 + 10.0 ** ((r_away - (r_home + _HOME_ADV)) / 400.0))
+    e_away = 1.0 - e_home
+
+    if home_score > away_score:
+        s_home, s_away = 1.0, 0.0
+    elif home_score == away_score:
+        s_home, s_away = 0.5, 0.5
+    else:
+        s_home, s_away = 0.0, 1.0
+
+    return (
+        r_home + k * (s_home - e_home),
+        r_away + k * (s_away - e_away),
+    )
+
+
+def calculate_elos(rows: list) -> dict[str, float]:
+    """Process match rows chronologically; return final Elo per team name."""
+    ratings: dict[str, float] = {}
+    for row in rows:
+        h, a = row.home_team, row.away_team
+        r_h = ratings.setdefault(h, _START_ELO)
+        r_a = ratings.setdefault(a, _START_ELO)
+        ratings[h], ratings[a] = elo_update(r_h, r_a, row.home_score, row.away_score, row.competition)
+    return ratings
 
 
 def run_ingestion() -> None:
     with get_session() as session:
-        with pipeline_run(session, "elo_ingest") as run:
-            ratings = _scrape_elo_ratings()
+        with pipeline_run(session, "elo_calculate") as run:
+            rows = session.execute(_FETCH_SQL).fetchall()
+            if not rows:
+                logger.warning("No matches found — run ingest_fifa.py first")
+                return
+
+            ratings = calculate_elos(rows)
+            now = datetime.now(timezone.utc)
+
             for name, elo in ratings.items():
-                _upsert_team_elo(session, name, elo)
+                stmt = (
+                    insert(Team)
+                    .values(name=name, elo_rating=round(elo, 2), updated_at=now)
+                    .on_conflict_do_update(
+                        index_elements=["name"],
+                        set_={"elo_rating": round(elo, 2), "updated_at": now},
+                    )
+                )
+                session.execute(stmt)
                 run.rows_updated += 1
-            logger.info("Upserted %d Elo ratings", run.rows_updated)
 
-
-def _scrape_elo_ratings() -> dict[str, float]:
-    url = f"{settings.elo_base_url}/en/world"
-    html = _fetch_with_retry(url)
-    return _parse_elo_table(html)
-
-
-def _fetch_with_retry(url: str) -> str:
-    last_exc: Exception | None = None
-    for delay in [0] + _RETRY_BACKOFF:
-        if delay:
-            time.sleep(delay)
-        try:
-            response = requests.get(url, headers=_HEADERS, timeout=_TIMEOUT)
-            response.raise_for_status()
-            return response.text
-        except requests.RequestException as exc:
-            logger.warning("Elo fetch attempt failed (%s): %s", url, exc)
-            last_exc = exc
-    raise RuntimeError(f"Failed to fetch {url} after retries") from last_exc
-
-
-def _parse_elo_table(html: str) -> dict[str, float]:
-    soup = BeautifulSoup(html, "lxml")
-    ratings: dict[str, float] = {}
-
-    # eloratings.net renders a table with class "maintable"
-    table = soup.find("table", class_="maintable")
-    if table is None:
-        # fallback: grab the first table with numeric ratings
-        table = soup.find("table")
-
-    if table is None:
-        logger.warning("No Elo table found in page HTML")
-        return ratings
-
-    for row in table.find_all("tr")[1:]:  # skip header
-        cells = row.find_all("td")
-        if len(cells) < 4:
-            continue
-        try:
-            name = cells[1].get_text(strip=True)
-            elo = float(cells[3].get_text(strip=True).replace(",", ""))
-            if name and elo:
-                ratings[name] = elo
-        except (ValueError, IndexError):
-            continue
-
-    logger.info("Parsed %d Elo ratings from page", len(ratings))
-    return ratings
-
-
-def _upsert_team_elo(session, name: str, elo: float) -> None:
-    stmt = (
-        insert(Team)
-        .values(name=name, elo_rating=elo, updated_at=datetime.now(timezone.utc))
-        .on_conflict_do_update(
-            index_elements=["name"],
-            set_={"elo_rating": elo, "updated_at": datetime.now(timezone.utc)},
-        )
-    )
-    session.execute(stmt)
+            logger.info("Elo ratings calculated from %d matches → %d teams", len(rows), run.rows_updated)
 
 
 if __name__ == "__main__":
