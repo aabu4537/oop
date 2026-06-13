@@ -71,6 +71,9 @@ def upsert_player_metrics(
     run_frequency: float | None = None,
     space_creation_idx: float | None = None,
     def_line_engagement: float | None = None,
+    clearances_per90: float | None = None,
+    interceptions_per90: float | None = None,
+    ball_recoveries_per90: float | None = None,
 ) -> None:
     values = {
         "player_id": player_id,
@@ -79,6 +82,9 @@ def upsert_player_metrics(
         "run_frequency": run_frequency,
         "space_creation_idx": space_creation_idx,
         "def_line_engagement": def_line_engagement,
+        "clearances_per90": clearances_per90,
+        "interceptions_per90": interceptions_per90,
+        "ball_recoveries_per90": ball_recoveries_per90,
         "computed_at": datetime.now(timezone.utc),
     }
     stmt = (
@@ -100,6 +106,11 @@ def upsert_team_metrics(
     avg_space_creation: float | None = None,
     avg_run_frequency: float | None = None,
     def_line_engagement: float | None = None,
+    clearances_per90: float | None = None,
+    interceptions_per90: float | None = None,
+    ball_recoveries_per90: float | None = None,
+    pressure_success_rate: float | None = None,
+    oop_composite: float | None = None,
 ) -> None:
     values = {
         "team_id": team_id,
@@ -108,6 +119,11 @@ def upsert_team_metrics(
         "avg_space_creation": avg_space_creation,
         "avg_run_frequency": avg_run_frequency,
         "def_line_engagement": def_line_engagement,
+        "clearances_per90": clearances_per90,
+        "interceptions_per90": interceptions_per90,
+        "ball_recoveries_per90": ball_recoveries_per90,
+        "pressure_success_rate": pressure_success_rate,
+        "oop_composite": oop_composite,
         "computed_at": datetime.now(timezone.utc),
     }
     stmt = (

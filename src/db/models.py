@@ -110,9 +110,12 @@ class PlayerMetric(Base):
     player_id = Column(UUID(as_uuid=True), ForeignKey("players.player_id"))
     match_id = Column(UUID(as_uuid=True), ForeignKey("matches.match_id"))
     press_intensity = Column(Float)
-    run_frequency = Column(Float)
-    space_creation_idx = Column(Float)
-    def_line_engagement = Column(Float)
+    run_frequency = Column(Float)        # IN-POSSESSION ONLY — not used in OOP model
+    space_creation_idx = Column(Float)   # IN-POSSESSION ONLY — not used in OOP model
+    def_line_engagement = Column(Float)  # composite (clearances+interceptions+recoveries) — kept for backwards compat
+    clearances_per90 = Column(Float)
+    interceptions_per90 = Column(Float)
+    ball_recoveries_per90 = Column(Float)
     computed_at = Column(DateTime, server_default=func.now())
 
     player = relationship("Player", back_populates="player_metrics")
@@ -128,9 +131,14 @@ class TeamMetric(Base):
     team_id = Column(UUID(as_uuid=True), ForeignKey("teams.team_id"))
     match_id = Column(UUID(as_uuid=True), ForeignKey("matches.match_id"))
     avg_press_intensity = Column(Float)
-    avg_space_creation = Column(Float)
-    avg_run_frequency = Column(Float)
-    def_line_engagement = Column(Float)
+    avg_space_creation = Column(Float)   # IN-POSSESSION ONLY — not used in OOP model
+    avg_run_frequency = Column(Float)    # IN-POSSESSION ONLY — not used in OOP model
+    def_line_engagement = Column(Float)  # composite — kept for backwards compat
+    clearances_per90 = Column(Float)
+    interceptions_per90 = Column(Float)
+    ball_recoveries_per90 = Column(Float)
+    pressure_success_rate = Column(Float)
+    oop_composite = Column(Float)
     computed_at = Column(DateTime, server_default=func.now())
 
     team = relationship("Team", back_populates="team_metrics")
