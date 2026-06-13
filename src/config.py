@@ -70,7 +70,7 @@ class ModelConfig:
     sim_extra_time_rate: float = 0.25   # expected goals per team in extra time
     sim_penalty_elo_factor: float = 0.04  # Elo tilt on penalty shootout win probability
     sim_penalty_elo_scale: float = 200.0  # Elo scale for penalty tilt (tanh denominator)
-    sim_oop_elo_scale: float = 75.0       # Elo points per 1 std-dev of oop_composite
+    sim_oop_elo_scale: float = 40.0       # Elo points per 1 std-dev of oop_composite
 
 
 @lru_cache
