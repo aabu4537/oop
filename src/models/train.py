@@ -33,7 +33,6 @@ def _make_lr() -> Pipeline:
     return Pipeline([
         ("scaler", StandardScaler()),
         ("clf", LogisticRegression(
-            multi_class="multinomial",
             solver="lbfgs",
             max_iter=1000,
             C=1.0,
@@ -91,7 +90,7 @@ def train_models(test_ratio: float = TEST_RATIO) -> dict[str, dict[str, float]]:
     # --- Logistic Regression ---
     lr_base = _make_lr()
     lr_base.fit(X_train, y_train)
-    lr = CalibratedClassifierCV(lr_base, cv="prefit", method="isotonic")
+    lr = CalibratedClassifierCV(lr_base, cv=None, method="isotonic")
     lr.fit(X_train, y_train)
     results[LR_VERSION] = _evaluate(lr, X_test, y_test)
     joblib.dump(lr, ARTIFACTS_DIR / f"{LR_VERSION}.joblib")
@@ -101,7 +100,7 @@ def train_models(test_ratio: float = TEST_RATIO) -> dict[str, dict[str, float]]:
     # --- XGBoost ---
     xgb_base = _make_xgb()
     xgb_base.fit(X_train, y_train)
-    xgb = CalibratedClassifierCV(xgb_base, cv="prefit", method="isotonic")
+    xgb = CalibratedClassifierCV(xgb_base, cv=None, method="isotonic")
     xgb.fit(X_train, y_train)
     results[XGB_VERSION] = _evaluate(xgb, X_test, y_test)
     joblib.dump(xgb, ARTIFACTS_DIR / f"{XGB_VERSION}.joblib")
