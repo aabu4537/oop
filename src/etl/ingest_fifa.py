@@ -78,6 +78,7 @@ def _load_rows(session, rows: list[dict]) -> int:
             home_score = int(row["home_score"]) if row["home_score"] else None
             away_score = int(row["away_score"]) if row["away_score"] else None
             competition = row.get("tournament", "").strip() or None
+            neutral = row.get("neutral", "FALSE").strip().upper() == "TRUE"
         except (KeyError, ValueError) as exc:
             logger.debug("Skipping malformed row %s: %s", row, exc)
             continue
@@ -105,6 +106,7 @@ def _load_rows(session, rows: list[dict]) -> int:
             competition=competition,
             home_score=home_score,
             away_score=away_score,
+            neutral=neutral,
         )
         session.add(match)
         inserted += 1

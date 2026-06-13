@@ -6,13 +6,15 @@ from unittest.mock import MagicMock, patch
 import pandas as pd
 import pytest
 
-from src.etl.ingest_elo import calculate_elos, elo_update, k_factor
+from datetime import date
+
+from src.etl.ingest_elo import calculate_elos, elo_update, gd_multiplier, k_factor
 from src.etl.ingest_fifa import _load_rows
 from src.etl.validate import validate_matches_df, validate_teams_df
 
 
 # ---------------------------------------------------------------------------
-# Elo calculator tests
+# K-factor
 # ---------------------------------------------------------------------------
 
 def test_k_factor_world_cup():
@@ -32,60 +34,122 @@ def test_k_factor_friendly():
     assert k_factor(None) == 20.0
 
 
+# ---------------------------------------------------------------------------
+# Goal-difference multiplier
+# ---------------------------------------------------------------------------
+
+def test_gd_multiplier_draw_is_one():
+    # log(0+1)+1 = 1.0
+    assert gd_multiplier(1, 1) == 1.0
+
+def test_gd_multiplier_one_goal():
+    import math
+    assert abs(gd_multiplier(2, 1) - (math.log(2) + 1)) < 1e-9
+
+def test_gd_multiplier_large_margin_is_capped():
+    assert gd_multiplier(10, 0) == 2.0
+
+
+# ---------------------------------------------------------------------------
+# Neutral venue
+# ---------------------------------------------------------------------------
+
+def test_elo_update_neutral_removes_home_advantage():
+    # Equal teams — on neutral ground the expected result is 50/50
+    # so a home win should produce the same update regardless of who is "home"
+    r_h_neutral, r_a_neutral = elo_update(1500.0, 1500.0, 1, 0, "Friendly", neutral=True)
+    r_h_home,    r_a_home    = elo_update(1500.0, 1500.0, 1, 0, "Friendly", neutral=False)
+    # Without neutral, home side is slightly favoured → smaller gain on win
+    assert r_h_neutral > r_h_home
+
+
+# ---------------------------------------------------------------------------
+# Core Elo update
+# ---------------------------------------------------------------------------
+
 def test_elo_update_home_win_raises_home_rating():
     r_h, r_a = elo_update(1500.0, 1500.0, 2, 1, "Friendly")
     assert r_h > 1500.0
     assert r_a < 1500.0
-
 
 def test_elo_update_away_win_raises_away_rating():
     r_h, r_a = elo_update(1500.0, 1500.0, 0, 1, "Friendly")
     assert r_h < 1500.0
     assert r_a > 1500.0
 
-
 def test_elo_update_draw_favours_away_when_home_is_stronger():
-    # Home team is much stronger, so a draw is a bad result for them
     r_h, r_a = elo_update(1800.0, 1500.0, 1, 1, "Friendly")
     assert r_h < 1800.0
     assert r_a > 1500.0
 
-
-def test_elo_update_ratings_are_zero_sum():
+def test_elo_update_ratings_are_zero_sum_without_decay():
     r_h0, r_a0 = 1600.0, 1400.0
     r_h1, r_a1 = elo_update(r_h0, r_a0, 3, 0, "FIFA World Cup")
     assert abs((r_h1 + r_a1) - (r_h0 + r_a0)) < 1e-9
 
 
-def test_calculate_elos_new_teams_start_at_1500():
-    class Row:
-        def __init__(self, h, a, hs, as_, c):
-            self.home_team, self.away_team = h, a
-            self.home_score, self.away_score = hs, as_
-            self.competition = c
+# ---------------------------------------------------------------------------
+# Recency decay
+# ---------------------------------------------------------------------------
 
-    rows = [Row("Spain", "Germany", 2, 1, "Friendly")]
+def test_recency_decay_not_applied_within_4_years():
+    max_date = date(2024, 1, 1)
+    match_date = date(2021, 1, 1)  # 3 years old — inside window
+    r_h_no_decay, _ = elo_update(1500.0, 1500.0, 2, 0, "Friendly")
+    r_h_decay,    _ = elo_update(
+        1500.0, 1500.0, 2, 0, "Friendly",
+        match_date=match_date, max_date=max_date,
+    )
+    assert r_h_no_decay == r_h_decay
+
+def test_recency_decay_pulls_rating_toward_1500():
+    max_date = date(2024, 1, 1)
+    match_date = date(2014, 1, 1)  # 10 years old → 6 years beyond threshold
+    r_h_nodecay, _ = elo_update(1500.0, 1500.0, 2, 0, "Friendly")
+    r_h_decay,   _ = elo_update(
+        1500.0, 1500.0, 2, 0, "Friendly",
+        match_date=match_date, max_date=max_date,
+    )
+    # Decay pulls strong result back toward 1500
+    assert r_h_decay < r_h_nodecay
+
+def test_recency_decay_below_1500_pulled_up():
+    max_date = date(2024, 1, 1)
+    match_date = date(2014, 1, 1)  # 10 years old
+    _, r_a_decay = elo_update(
+        1500.0, 1500.0, 2, 0, "Friendly",
+        match_date=match_date, max_date=max_date,
+    )
+    # Away team lost → rating dropped below 1500; decay should pull it back up
+    _, r_a_nodecay = elo_update(1500.0, 1500.0, 2, 0, "Friendly")
+    assert r_a_decay > r_a_nodecay
+
+
+# ---------------------------------------------------------------------------
+# calculate_elos end-to-end
+# ---------------------------------------------------------------------------
+
+class _Row:
+    def __init__(self, h, a, hs, as_, c, neutral=False, match_date=None):
+        self.home_team, self.away_team = h, a
+        self.home_score, self.away_score = hs, as_
+        self.competition = c
+        self.neutral = neutral
+        self.match_date = match_date or date(2020, 1, 1)
+
+def test_calculate_elos_new_teams_start_at_1500():
+    rows = [_Row("Spain", "Germany", 2, 1, "Friendly")]
     ratings = calculate_elos(rows)
-    assert "Spain" in ratings
-    assert "Germany" in ratings
     assert ratings["Spain"] > 1500.0
     assert ratings["Germany"] < 1500.0
 
-
 def test_calculate_elos_processes_chronologically():
-    class Row:
-        def __init__(self, h, a, hs, as_, c):
-            self.home_team, self.away_team = h, a
-            self.home_score, self.away_score = hs, as_
-            self.competition = c
-
-    # Spain beats Germany twice; Spain's rating should compound upward
     rows = [
-        Row("Spain", "Germany", 2, 0, "Friendly"),
-        Row("Spain", "Germany", 3, 0, "Friendly"),
+        _Row("Spain", "Germany", 2, 0, "Friendly"),
+        _Row("Spain", "Germany", 3, 0, "Friendly"),
     ]
     ratings = calculate_elos(rows)
-    assert ratings["Spain"] > 1510.0  # meaningfully above start
+    assert ratings["Spain"] > 1510.0
 
 
 # ---------------------------------------------------------------------------

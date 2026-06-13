@@ -63,6 +63,7 @@ class Match(Base):
     season = Column(String(20))
     home_score = Column(Integer)
     away_score = Column(Integer)
+    neutral = Column(Boolean, default=False)
     statsbomb_id = Column(Integer, unique=True)
 
     home_team = relationship("Team", foreign_keys=[home_team_id], back_populates="home_matches")
