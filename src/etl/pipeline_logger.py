@@ -10,6 +10,34 @@ from src.db.models import PipelineRun
 logger = logging.getLogger(__name__)
 
 
+class PipelineBlockedError(RuntimeError):
+    """Raised when a required upstream pipeline stage last ran with status 'failed'."""
+
+
+def assert_upstream_ok(session: Session, *stage_names: str, force: bool = False) -> None:
+    """Halt if any named upstream stage's most recent run has status 'failed'.
+
+    Pass force=True (--force CLI flag) to bypass the check for manual reruns.
+    """
+    if force:
+        logger.warning("--force: skipping upstream pipeline status checks")
+        return
+
+    for stage in stage_names:
+        latest: PipelineRun | None = (
+            session.query(PipelineRun)
+            .filter_by(pipeline_name=stage)
+            .order_by(PipelineRun.started_at.desc())
+            .first()
+        )
+        if latest is not None and latest.status == "failed":
+            raise PipelineBlockedError(
+                f"Upstream stage '{stage}' last run failed "
+                f"(run_id={latest.run_id}, error={latest.error_message!r}). "
+                "Fix the issue and rerun, or pass --force to bypass this check."
+            )
+
+
 @contextmanager
 def pipeline_run(session: Session, name: str) -> Generator[PipelineRun, None, None]:
     """Context manager that writes a PipelineRun audit row for the duration of the ETL.

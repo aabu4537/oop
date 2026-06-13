@@ -30,7 +30,7 @@ _TIMEOUT = 30
 _RETRY_BACKOFF = [1, 2, 4]
 
 
-def run_ingestion(url: str = _RESULTS_CSV_URL) -> None:
+def run_ingestion(url: str = _RESULTS_CSV_URL, force: bool = False) -> None:  # noqa: ARG001 — force accepted for CLI consistency
     with get_session() as session:
         with pipeline_run(session, "fifa_results_ingest") as run:
             rows = _fetch_csv(url)
@@ -121,5 +121,10 @@ def _load_rows(session, rows: list[dict]) -> int:
 
 
 if __name__ == "__main__":
+    import argparse
     logging.basicConfig(level=logging.INFO)
-    run_ingestion()
+    parser = argparse.ArgumentParser(description="Ingest FIFA international match results")
+    parser.add_argument("--force", action="store_true",
+                        help="Bypass upstream pipeline status checks (no-op for this stage)")
+    args = parser.parse_args()
+    run_ingestion(force=args.force)

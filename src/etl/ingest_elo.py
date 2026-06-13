@@ -33,15 +33,23 @@ from datetime import date, datetime, timezone
 from sqlalchemy import text
 from sqlalchemy.dialects.postgresql import insert
 
+from src.config import get_model_config
 from src.db.models import Team
 from src.db.session import get_session
-from src.etl.pipeline_logger import pipeline_run
+from src.etl.pipeline_logger import assert_upstream_ok, pipeline_run
 
 logger = logging.getLogger(__name__)
 
-_START_ELO = 1500.0
-_HOME_ADV = 100.0
-_GD_CAP = 2.0
+_cfg = get_model_config()
+_START_ELO = _cfg.elo_start
+_HOME_ADV   = _cfg.elo_home_advantage
+_GD_CAP     = _cfg.elo_gd_cap
+_K_WORLD_CUP    = _cfg.elo_k_world_cup
+_K_CONTINENTAL  = _cfg.elo_k_continental
+_K_QUALIFIER    = _cfg.elo_k_qualifier
+_K_FRIENDLY     = _cfg.elo_k_friendly
+_DECAY_RATE     = _cfg.elo_decay_rate
+_DECAY_WINDOW   = _cfg.elo_decay_window_years
 
 _FETCH_SQL = text("""
     SELECT
@@ -69,16 +77,16 @@ def k_factor(tournament: str | None) -> float:
     """Base K-factor for a tournament, before goal-difference scaling."""
     t = (tournament or "").lower()
     if "qualif" in t or "qualification" in t:
-        return 40.0
+        return _K_QUALIFIER
     if _is_world_cup_final(t):
-        return 60.0
+        return _K_WORLD_CUP
     if _is_major_continental(t):
-        return 50.0
-    return 20.0
+        return _K_CONTINENTAL
+    return _K_FRIENDLY
 
 
 def gd_multiplier(home_score: int, away_score: int) -> float:
-    """Scale K by goal difference, capped at 2.0."""
+    """Scale K by goal difference, capped at _GD_CAP."""
     gd = abs(home_score - away_score)
     return min(math.log(gd + 1) + 1, _GD_CAP)
 
@@ -120,14 +128,14 @@ def elo_update(
     r_home = r_home + k_eff * (s_home - e_home)
     r_away = r_away + k_eff * (s_away - e_away)
 
-    # Recency decay — applied once per year beyond the 4-year window
+    # Recency decay — applied once per year beyond the decay window
     if match_date is not None and max_date is not None:
         years_old = (max_date - match_date).days / 365.25
-        if years_old > 4:
-            years_beyond = int(years_old) - 4
+        if years_old > _DECAY_WINDOW:
+            years_beyond = int(years_old) - _DECAY_WINDOW
             for _ in range(years_beyond):
-                r_home = r_home + 0.10 * (_START_ELO - r_home)
-                r_away = r_away + 0.10 * (_START_ELO - r_away)
+                r_home = r_home + _DECAY_RATE * (_START_ELO - r_home)
+                r_away = r_away + _DECAY_RATE * (_START_ELO - r_away)
 
     return r_home, r_away
 
@@ -180,8 +188,9 @@ def _is_major_continental(t: str) -> bool:
 # Entry point
 # ---------------------------------------------------------------------------
 
-def run_ingestion() -> None:
+def run_ingestion(force: bool = False) -> None:
     with get_session() as session:
+        assert_upstream_ok(session, "fifa_results_ingest", force=force)
         with pipeline_run(session, "elo_calculate") as run:
             rows = session.execute(_FETCH_SQL).fetchall()
             if not rows:
@@ -213,5 +222,10 @@ def run_ingestion() -> None:
 
 
 if __name__ == "__main__":
+    import argparse
     logging.basicConfig(level=logging.INFO)
-    run_ingestion()
+    parser = argparse.ArgumentParser(description="Calculate Elo ratings from match history")
+    parser.add_argument("--force", action="store_true",
+                        help="Bypass upstream pipeline status checks")
+    args = parser.parse_args()
+    run_ingestion(force=args.force)

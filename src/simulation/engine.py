@@ -18,10 +18,13 @@ from dataclasses import dataclass, field
 import numpy as np
 import pandas as pd
 
+from src.config import get_model_config
+
 logger = logging.getLogger(__name__)
 
+_cfg = get_model_config()
 # Average goals per team per international match
-_MU = 1.15
+_MU = _cfg.sim_mu
 # Stages ordered from most to least exclusive
 STAGES = ["champion", "final", "semi_final", "quarter_final", "round_of_16", "group_stage"]
 # Reverse order (group_stage first) used for range comparisons
@@ -75,12 +78,14 @@ def simulate_knockout_match(home: Team, away: Team, rng: np.random.Generator) ->
         return home if hg > ag else away
 
     # Extra time — reduced scoring rate
-    hg2, ag2 = int(rng.poisson(0.25)), int(rng.poisson(0.25))
+    hg2, ag2 = int(rng.poisson(_cfg.sim_extra_time_rate)), int(rng.poisson(_cfg.sim_extra_time_rate))
     if hg2 != ag2:
         return home if hg2 > ag2 else away
 
     # Penalties — slight Elo advantage
-    p_home = 0.5 + 0.04 * np.tanh((home.elo - away.elo) / 200.0)
+    p_home = 0.5 + _cfg.sim_penalty_elo_factor * np.tanh(
+        (home.elo - away.elo) / _cfg.sim_penalty_elo_scale
+    )
     return home if rng.random() < p_home else away
 
 

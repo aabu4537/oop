@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 from src.config import get_settings
 from src.db.models import Event, Match, Player, Team
 from src.db.session import get_session
-from src.etl.pipeline_logger import pipeline_run
+from src.etl.pipeline_logger import assert_upstream_ok, pipeline_run
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -31,7 +31,11 @@ except ImportError:
 # Public entry point
 # ---------------------------------------------------------------------------
 
-def run_ingestion(competition_ids: list[int] | None = None, season_ids: list[int] | None = None) -> None:
+def run_ingestion(
+    competition_ids: list[int] | None = None,
+    season_ids: list[int] | None = None,
+    force: bool = False,
+) -> None:
     if not _SB_AVAILABLE:
         logger.error("statsbombpy is required to run StatsBomb ingestion")
         return
@@ -44,6 +48,7 @@ def run_ingestion(competition_ids: list[int] | None = None, season_ids: list[int
     ]
 
     with get_session() as session:
+        assert_upstream_ok(session, "fifa_results_ingest", force=force)
         with pipeline_run(session, "statsbomb_ingest") as run:
             for comp_id in competition_ids:
                 for season_id in season_ids:
@@ -205,5 +210,10 @@ def _extract_outcome(ev: Any) -> str | None:
 
 
 if __name__ == "__main__":
+    import argparse
     logging.basicConfig(level=logging.INFO)
-    run_ingestion()
+    parser = argparse.ArgumentParser(description="Ingest StatsBomb event data")
+    parser.add_argument("--force", action="store_true",
+                        help="Bypass upstream pipeline status checks")
+    args = parser.parse_args()
+    run_ingestion(force=args.force)

@@ -46,10 +46,11 @@ from typing import Sequence
 import pandas as pd
 from sqlalchemy.orm import Session
 
+from src.config import get_model_config
 from src.db.models import Event, PlayerMetric, Team
 from src.db.session import get_session
 from src.etl.loaders import upsert_player_metrics, upsert_team_metrics
-from src.etl.pipeline_logger import pipeline_run
+from src.etl.pipeline_logger import assert_upstream_ok, pipeline_run
 
 logger = logging.getLogger(__name__)
 
@@ -63,10 +64,11 @@ _BALL_RECOVERY = "Ball Recovery"
 _DEFENSIVE_TYPES = frozenset({_CLEARANCE, _INTERCEPTION, _BALL_RECOVERY})
 _REGAIN_TYPES = frozenset({_BALL_RECOVERY, _INTERCEPTION})
 
-_OOP_W_PRESS = 0.35
-_OOP_W_PSR = 0.30
-_OOP_W_INTERCEPT = 0.20
-_OOP_W_RECOVERY = 0.15
+_cfg = get_model_config()
+_OOP_W_PRESS     = _cfg.oop_w_press
+_OOP_W_PSR       = _cfg.oop_w_psr
+_OOP_W_INTERCEPT = _cfg.oop_w_intercept
+_OOP_W_RECOVERY  = _cfg.oop_w_recovery
 
 
 # ---------------------------------------------------------------------------
@@ -201,7 +203,7 @@ def rolling_oop_composite(
     team_metrics_df: pd.DataFrame,
     team_id: uuid.UUID,
     before_date: date,
-    n: int = 10,
+    n: int | None = None,
 ) -> float | None:
     """Rolling OOP composite for a team from the last n matches before a date.
 
@@ -214,6 +216,8 @@ def rolling_oop_composite(
     Returns None if the team has no history before before_date.
     No future data leakage: uses only matches strictly before before_date.
     """
+    if n is None:
+        n = get_model_config().oop_rolling_window
     mask = (
         (team_metrics_df["team_id"] == team_id)
         & (team_metrics_df["match_date"] < before_date)
@@ -413,7 +417,7 @@ def _print_oop_ranking(session: Session, team_df: pd.DataFrame) -> None:
 # Public entry point
 # ---------------------------------------------------------------------------
 
-def run_pipeline(match_ids: Sequence[uuid.UUID] | None = None) -> None:
+def run_pipeline(match_ids: Sequence[uuid.UUID] | None = None, force: bool = False) -> None:
     """Compute and persist off-ball metrics.
 
     Args:
@@ -421,6 +425,7 @@ def run_pipeline(match_ids: Sequence[uuid.UUID] | None = None) -> None:
                    If None, processes only matches with no existing player_metrics.
     """
     with get_session() as session:
+        assert_upstream_ok(session, "statsbomb_ingest", force=force)
         with pipeline_run(session, "feature_engineering") as run:
             events_df = _fetch_events(session, match_ids)
 
@@ -449,5 +454,10 @@ def run_pipeline(match_ids: Sequence[uuid.UUID] | None = None) -> None:
 
 
 if __name__ == "__main__":
+    import argparse
     logging.basicConfig(level=logging.INFO)
-    run_pipeline()
+    parser = argparse.ArgumentParser(description="Compute off-ball feature metrics")
+    parser.add_argument("--force", action="store_true",
+                        help="Bypass upstream pipeline status checks")
+    args = parser.parse_args()
+    run_pipeline(force=args.force)
