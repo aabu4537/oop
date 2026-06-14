@@ -1,24 +1,27 @@
 "use client";
 
 import { useState } from "react";
-import { simulateWC2026, type SimulateResponse } from "@/lib/api";
+import { simulate, type SimulateResponse } from "@/lib/api";
 import { getFlag } from "@/lib/flags";
 
-// ── WC 2026 confirmed draw ───────────────────────────────────────────────────
+// ── WC 2026 confirmed draw — Elo from live DB ────────────────────────────────
+// Names match the DB exactly so the simulation engine resolves them correctly.
 
-const WC2026_GROUPS: Record<string, string[]> = {
-  A: ["Mexico", "South Korea", "South Africa", "Czechia"],
-  B: ["Canada", "Switzerland", "Qatar", "Bosnia and Herzegovina"],
-  C: ["Brazil", "Morocco", "Scotland", "Haiti"],
-  D: ["USA", "Australia", "Paraguay", "Türkiye"],
-  E: ["Germany", "Ecuador", "Ivory Coast", "Curaçao"],
-  F: ["Netherlands", "Japan", "Tunisia", "Sweden"],
-  G: ["Belgium", "Iran", "Egypt", "New Zealand"],
-  H: ["Spain", "Uruguay", "Saudi Arabia", "Cabo Verde"],
-  I: ["France", "Senegal", "Norway", "Iraq"],
-  J: ["Argentina", "Austria", "Algeria", "Jordan"],
-  K: ["Portugal", "Colombia", "Uzbekistan", "DR Congo"],
-  L: ["England", "Croatia", "Panama", "Ghana"],
+type TeamEntry = { name: string; elo: number };
+
+const WC2026_GROUPS: Record<string, TeamEntry[]> = {
+  A: [{ name: "Mexico", elo: 1789 }, { name: "South Korea", elo: 1768 }, { name: "South Africa", elo: 1606 }, { name: "Czechia", elo: 1573 }],
+  B: [{ name: "Canada", elo: 1711 }, { name: "Switzerland", elo: 1814 }, { name: "Qatar", elo: 1476 }, { name: "Bosnia and Herzegovina", elo: 1498 }],
+  C: [{ name: "Brazil", elo: 1845 }, { name: "Morocco", elo: 1864 }, { name: "Scotland", elo: 1641 }, { name: "Haiti", elo: 1629 }],
+  D: [{ name: "USA", elo: 1668 }, { name: "Australia", elo: 1762 }, { name: "Paraguay", elo: 1623 }, { name: "Türkiye", elo: 1856 }],
+  E: [{ name: "Germany", elo: 1840 }, { name: "Ecuador", elo: 1815 }, { name: "Ivory Coast", elo: 1765 }, { name: "Curaçao", elo: 1530 }],
+  F: [{ name: "Netherlands", elo: 1822 }, { name: "Japan", elo: 1832 }, { name: "Tunisia", elo: 1656 }, { name: "Sweden", elo: 1595 }],
+  G: [{ name: "Belgium", elo: 1770 }, { name: "Iran", elo: 1771 }, { name: "Egypt", elo: 1729 }, { name: "New Zealand", elo: 1591 }],
+  H: [{ name: "Spain", elo: 2032 }, { name: "Uruguay", elo: 1741 }, { name: "Saudi Arabia", elo: 1600 }, { name: "Cabo Verde", elo: 1604 }],
+  I: [{ name: "France", elo: 1940 }, { name: "Senegal", elo: 1839 }, { name: "Norway", elo: 1811 }, { name: "Iraq", elo: 1646 }],
+  J: [{ name: "Argentina", elo: 1962 }, { name: "Austria", elo: 1742 }, { name: "Algeria", elo: 1808 }, { name: "Jordan", elo: 1646 }],
+  K: [{ name: "Portugal", elo: 1842 }, { name: "Colombia", elo: 1838 }, { name: "Uzbekistan", elo: 1689 }, { name: "DR Congo", elo: 1668 }],
+  L: [{ name: "England", elo: 1919 }, { name: "Croatia", elo: 1758 }, { name: "Panama", elo: 1692 }, { name: "Ghana", elo: 1526 }],
 };
 
 const STAGE_ORDER = ["group_stage", "round_of_32", "round_of_16", "quarter_final", "semi_final", "final", "champion"];
@@ -106,7 +109,7 @@ export default function GroupsPage() {
     setLoading(true);
     setError("");
     try {
-      const res = await simulateWC2026(nSims, seed);
+      const res = await simulate({ groups: WC2026_GROUPS, n_sims: nSims, seed });
       setResult(res);
     } catch (err) {
       if (err instanceof TypeError && err.message.includes("fetch")) {
@@ -136,10 +139,11 @@ export default function GroupsPage() {
               Group {letter}
             </p>
             <div className="space-y-2">
-              {teams.map((team) => (
-                <div key={team} className="flex items-center gap-2">
-                  <span className="text-base leading-none shrink-0">{getFlag(team)}</span>
-                  <span className="text-white/75 text-xs truncate">{team}</span>
+              {teams.map((t) => (
+                <div key={t.name} className="flex items-center gap-2">
+                  <span className="text-base leading-none shrink-0">{getFlag(t.name)}</span>
+                  <span className="text-white/75 text-xs truncate">{t.name}</span>
+                  <span className="text-white/20 text-xs tabular-nums ml-auto">{t.elo}</span>
                 </div>
               ))}
             </div>
