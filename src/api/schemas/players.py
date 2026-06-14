@@ -1,6 +1,16 @@
-from uuid import UUID
 from datetime import datetime
+from uuid import UUID
 from pydantic import BaseModel
+
+
+class PlayerOut(BaseModel):
+    player_id: UUID
+    name: str
+    team_name: str | None = None
+    position: str | None = None
+    nationality: str | None = None
+
+    model_config = {"from_attributes": False}
 
 
 class PlayerMetricOut(BaseModel):
