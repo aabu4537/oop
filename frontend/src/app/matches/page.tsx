@@ -13,6 +13,11 @@ const CODE_TO_NAME: Record<string, string> = {
   DEN: "Denmark", SRB: "Serbia", COL: "Colombia", ECU: "Ecuador",
   IRN: "Iran", TUN: "Tunisia", EGY: "Egypt", NGA: "Nigeria",
   CMR: "Cameroon", GHA: "Ghana", SAU: "Saudi Arabia", QAT: "Qatar",
+  ALG: "Algeria", CIV: "Ivory Coast", NOR: "Norway", SWE: "Sweden",
+  AUT: "Austria", UZB: "Uzbekistan", JOR: "Jordan", PAR: "Paraguay",
+  TUR: "Türkiye", SCO: "Scotland", HAI: "Haiti", CPV: "Cabo Verde",
+  CUW: "Curaçao", IRQ: "Iraq", BIH: "Bosnia and Herzegovina",
+  ZAF: "South Africa", CZE: "Czechia", COD: "DR Congo", NZL: "New Zealand",
 };
 
 function resolveName(raw: string | null | undefined): string {

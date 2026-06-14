@@ -8,7 +8,7 @@ const links = [
   { href: "/teams", label: "Teams" },
   { href: "/matches", label: "Matches" },
   { href: "/predictions", label: "Predictions" },
-  { href: "/simulate", label: "Simulate" },
+  { href: "/simulate", label: "Groups" },
   { href: "/players", label: "Players" },
 ];
 
