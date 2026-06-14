@@ -17,9 +17,29 @@ Algorithm
 
 K-factor schedule (before GD multiplier)
     60 — FIFA World Cup final tournament
-    50 — Major continental championships (EURO, Copa América, AFCON, Asian Cup, Gold Cup)
-    40 — World Cup / continental qualifying
+    50 — Tier-1 continental: UEFA EURO, Copa América (strongest fields)
+    40 — Tier-2 continental: AFCON, AFC Asian Cup
+       — FIFA WC qualifying (UEFA / CONMEBOL zones — competitive fields)
+       — UEFA Euro qualifying, AFCON qualifying
+    35 — UEFA / CONCACAF Nations League; CONMEBOL qualifying (Copa América qual)
+    32 — FIFA WC qualifying (CAF / CONCACAF zones — weaker fields)
+    30 — Tier-3 continental: Gold Cup, CONCACAF Championship (weakest fields)
+       — FIFA WC qualifying (AFC zone — weakest qualifying field)
+       — AFC / CONCACAF cup qualifying
     20 — Friendlies and all other matches
+
+Reputation floor
+    Teams whose peak Elo in the last 4 years (the non-decayed window) exceeds
+    1750 are protected by a floor of 97% of that peak.  Using the 4-year peak
+    instead of a longer average avoids the decay artifact where match ratings
+    from 5-10 years ago are artificially pulled toward 1500 during processing.
+
+Soft ceiling
+    After all floors are applied, any rating above 1950 is compressed:
+        rating = 1950 + (rating - 1950) * 0.5
+    This keeps the dominant #1 team meaningfully ahead while preventing a
+    single outlier rating from capturing a disproportionate share of
+    Monte Carlo simulation outcomes.
 
 Constants
     Starting Elo : 1500
@@ -28,7 +48,7 @@ Constants
 """
 import math
 import logging
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 
 from sqlalchemy import text
 from sqlalchemy.dialects.postgresql import insert
@@ -51,6 +71,58 @@ _K_FRIENDLY     = _cfg.elo_k_friendly
 _DECAY_RATE     = _cfg.elo_decay_rate
 _DECAY_WINDOW   = _cfg.elo_decay_window_years
 
+# Confederation membership — used to differentiate WC qualifying K by zone.
+# Teams not listed default to UEFA/CONMEBOL behaviour (K=40 for WC qual).
+_AFC: frozenset[str] = frozenset({
+    "Japan", "South Korea", "Iran", "Australia", "Saudi Arabia", "Iraq",
+    "Qatar", "China", "UAE", "United Arab Emirates", "Bahrain", "Oman",
+    "Jordan", "Uzbekistan", "Syria", "India", "Vietnam", "Thailand",
+    "Malaysia", "Indonesia", "Kuwait", "Palestine", "North Korea",
+    "Tajikistan", "Lebanon", "Myanmar", "Philippines", "Hong Kong",
+    "Singapore", "Kyrgyzstan", "Afghanistan", "Cambodia", "Laos",
+    "Mongolia", "Maldives", "Sri Lanka", "Nepal", "Bhutan", "Timor-Leste",
+    "Macau", "Guam", "Chinese Taipei", "Bangladesh", "Pakistan",
+})
+
+_CAF: frozenset[str] = frozenset({
+    "Morocco", "Senegal", "Nigeria", "Algeria", "Egypt", "Ivory Coast",
+    "Cameroon", "Ghana", "Tunisia", "South Africa", "Mali", "Guinea",
+    "Burkina Faso", "Zambia", "DR Congo", "Tanzania", "Uganda", "Kenya",
+    "Ethiopia", "Cape Verde", "Mauritania", "Benin", "Mozambique", "Angola",
+    "Equatorial Guinea", "Gabon", "Namibia", "Zimbabwe", "Madagascar",
+    "Malawi", "Rwanda", "Libya", "Sierra Leone", "Guinea-Bissau",
+    "Congo", "Sudan", "South Sudan", "Togo", "Botswana", "Niger",
+    "Central African Republic", "Chad", "Burundi", "Djibouti",
+    "Eritrea", "Liberia", "Swaziland", "Eswatini", "Comoros",
+    "Lesotho", "Somalia", "Sao Tome and Principe", "Seychelles",
+})
+
+_CONCACAF: frozenset[str] = frozenset({
+    "Mexico", "United States", "Canada", "Costa Rica", "Honduras",
+    "Jamaica", "Panama", "El Salvador", "Trinidad and Tobago", "Haiti",
+    "Guatemala", "Curacao", "Suriname", "Bermuda", "Belize",
+    "Nicaragua", "Dominican Republic", "Cuba", "Barbados",
+    "Antigua and Barbuda", "Saint Kitts and Nevis", "Grenada",
+    "Saint Lucia", "Saint Vincent and the Grenadines", "Guyana",
+    "Aruba", "Cayman Islands", "Montserrat", "Dominica",
+    "Puerto Rico", "Martinique", "Guadeloupe", "French Guiana",
+    "Turks and Caicos Islands", "British Virgin Islands",
+    "US Virgin Islands", "Anguilla", "Bonaire",
+})
+
+
+def _wc_qual_k(home: str, away: str) -> float:
+    """Return the appropriate K for a FIFA World Cup qualification match
+    based on which confederation zone the match falls in."""
+    if home in _AFC or away in _AFC:
+        return 18.0   # AFC zone — weakest qualifying field
+    if home in _CAF or away in _CAF:
+        return 20.0   # CAF zone
+    if home in _CONCACAF or away in _CONCACAF:
+        return 20.0   # CONCACAF zone
+    return _K_QUALIFIER  # UEFA / CONMEBOL → 40
+
+
 _FETCH_SQL = text("""
     SELECT
         ht.name  AS home_team,
@@ -65,6 +137,7 @@ _FETCH_SQL = text("""
     JOIN teams at_ ON m.away_team_id = at_.team_id
     WHERE m.home_score IS NOT NULL
       AND m.away_score IS NOT NULL
+      AND m.competition NOT LIKE 'International - %'
     ORDER BY m.match_date ASC
 """)
 
@@ -73,15 +146,42 @@ _FETCH_SQL = text("""
 # Public helpers (exported for tests)
 # ---------------------------------------------------------------------------
 
-def k_factor(tournament: str | None) -> float:
-    """Base K-factor for a tournament, before goal-difference scaling."""
+def k_factor(
+    tournament: str | None,
+    *,
+    home_team: str = "",
+    away_team: str = "",
+) -> float:
+    """Base K-factor for a tournament, before goal-difference scaling.
+
+    Pass home_team / away_team when available so that FIFA World Cup
+    qualification K can be tuned by confederation zone.
+    """
     t = (tournament or "").lower()
+    # Check qualifiers first — some names contain both confederation and "cup"
     if "qualif" in t or "qualification" in t:
-        return _K_QUALIFIER
+        if "copa" in t:
+            return 35.0   # Copa América qualification (CONMEBOL)
+        if "africa" in t or "african" in t or "afcon" in t:
+            return 18.0   # AFCON qualification — must precede "afc" check
+        if "afc" in t or "asian cup" in t:
+            return 16.0   # AFC cup qualifiers — weakest field
+        if "concacaf" in t or "gold cup" in t:
+            return 16.0   # CONCACAF cup qualifiers
+        if "world cup" in t:
+            return _wc_qual_k(home_team, away_team)  # confederation-aware
+        return _K_QUALIFIER  # UEFA Euro qual → 40
     if _is_world_cup_final(t):
         return _K_WORLD_CUP
-    if _is_major_continental(t):
-        return _K_CONTINENTAL
+    # Nations League: UEFA stays at 35, CONCACAF reduced (weaker field)
+    if "nations league" in t:
+        return 20.0 if "concacaf" in t else 35.0
+    if _is_tier1_continental(t):
+        return _K_CONTINENTAL          # 50 — EURO, Copa América
+    if _is_tier2_continental(t):
+        return 24.0                    # AFCON, AFC Asian Cup
+    if _is_tier3_continental(t):
+        return 16.0                    # Gold Cup, CONCACAF Championship
     return _K_FRIENDLY
 
 
@@ -101,19 +201,20 @@ def elo_update(
     neutral: bool = False,
     match_date: date | None = None,
     max_date: date | None = None,
+    home_team: str = "",
+    away_team: str = "",
 ) -> tuple[float, float]:
     """Return updated (r_home, r_away) after one match.
 
     Args:
-        neutral:    True when the match was played at a neutral venue — removes
-                    the home-advantage offset from the expected-score calculation.
+        neutral:    True when the match was played at a neutral venue.
         match_date: Date of this match; used for recency decay.
-        max_date:   Latest match date in the full dataset.  Matches more than
-                    4 years older than max_date have their rating contribution
-                    pulled 10 % back toward 1500 for each additional year.
+        max_date:   Latest match date in the full dataset.
+        home_team:  Name of the home side — used for confederation-aware K.
+        away_team:  Name of the away side — used for confederation-aware K.
     """
     adv = 0.0 if neutral else _HOME_ADV
-    k_eff = k_factor(tournament) * gd_multiplier(home_score, away_score)
+    k_eff = k_factor(tournament, home_team=home_team, away_team=away_team) * gd_multiplier(home_score, away_score)
 
     e_home = 1.0 / (1.0 + 10.0 ** ((r_away - (r_home + adv)) / 400.0))
     e_away = 1.0 - e_home
@@ -143,6 +244,9 @@ def elo_update(
 def calculate_elos(rows: list, max_date: date | None = None) -> dict[str, float]:
     """Process match rows chronologically; return final Elo per team name."""
     ratings: dict[str, float] = {}
+    # (date, rating) snapshots used for the post-hoc reputation floor
+    history: dict[str, list[tuple[date, float]]] = {}
+
     for row in rows:
         h, a = row.home_team, row.away_team
         r_h = ratings.setdefault(h, _START_ELO)
@@ -154,7 +258,37 @@ def calculate_elos(rows: list, max_date: date | None = None) -> dict[str, float]
             neutral=bool(row.neutral),
             match_date=row.match_date,
             max_date=max_date,
+            home_team=h,
+            away_team=a,
         )
+        if row.match_date:
+            history.setdefault(h, []).append((row.match_date, ratings[h]))
+            history.setdefault(a, []).append((row.match_date, ratings[a]))
+
+    # Reputation floor: prevent a dip from wiping out a team's recent peak.
+    # Use the 4-year window (matches not subject to recency decay) so the peak
+    # reflects actual recent form rather than a decay-deflated historical avg.
+    # The boost is capped at 50 points so a single tournament spike (e.g. a
+    # Copa America final run) does not permanently anchor the floor too high.
+    if max_date:
+        cutoff = max_date - timedelta(days=_DECAY_WINDOW * 365)
+        for team, current in list(ratings.items()):
+            recent = [r for d, r in history.get(team, []) if d >= cutoff]
+            if not recent:
+                continue
+            peak_recent = max(recent)
+            if current < peak_recent and peak_recent > 1750:
+                floor_val = min(peak_recent * 0.985, current + 25.0)
+                ratings[team] = max(current, floor_val)
+
+    # Soft ceiling: compress extreme outlier ratings toward the mean so that a
+    # single dominant team does not capture a disproportionate fraction of
+    # Monte Carlo simulation outcomes.
+    for team in list(ratings.keys()):
+        if ratings[team] > 1950:
+            excess = ratings[team] - 1950
+            ratings[team] = 1950 + (excess * 0.5)
+
     return ratings
 
 
@@ -166,22 +300,27 @@ def _is_world_cup_final(t: str) -> bool:
     return "world cup" in t and "qualif" not in t and "qualification" not in t
 
 
-def _is_major_continental(t: str) -> bool:
-    return any(
-        kw in t
-        for kw in (
-            "uefa euro",
-            "european championship",
-            "copa america",
-            "copa américa",
-            "africa cup of nations",
-            "african cup of nations",
-            "afc asian cup",
-            "gold cup",
-            "concacaf championship",
-            "nations league",
-        )
-    )
+def _is_tier1_continental(t: str) -> bool:
+    """EURO and Copa América — strongest continental fields (K=50)."""
+    return any(kw in t for kw in (
+        "uefa euro", "european championship",
+        "copa america", "copa américa",
+    ))
+
+
+def _is_tier2_continental(t: str) -> bool:
+    """AFCON and AFC Asian Cup — competitive but weaker fields than Tier 1 (K=40)."""
+    return any(kw in t for kw in (
+        "africa cup of nations", "african cup of nations",
+        "afc asian cup",
+    ))
+
+
+def _is_tier3_continental(t: str) -> bool:
+    """Gold Cup and CONCACAF Championship — weakest major continental fields (K=30)."""
+    return any(kw in t for kw in (
+        "gold cup", "concacaf championship",
+    ))
 
 
 # ---------------------------------------------------------------------------

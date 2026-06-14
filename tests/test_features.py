@@ -328,7 +328,7 @@ def test_rolling_oop_composite_basic():
         {"team_id": T1, "match_date": date(2024, 3, 1), "oop_composite": 3.0},  # on cutoff — excluded
     ])
     result = rolling_oop_composite(df, T1, date(2024, 3, 1), n=10)
-    assert result == pytest.approx(1.5)  # mean(1.0, 2.0)
+    assert result == pytest.approx(1.1818, abs=1e-3)  # EWMA(span=10) of [1.0, 2.0]
 
 
 def test_rolling_oop_composite_respects_n():
@@ -338,9 +338,9 @@ def test_rolling_oop_composite_respects_n():
         {"team_id": T1, "match_date": date(2024, 3, 1), "oop_composite": 5.0},
         {"team_id": T1, "match_date": date(2024, 5, 1), "oop_composite": 0.0},  # cutoff
     ])
-    # n=2: only last 2 matches before 2024-05-01 → March (5.0) and February (3.0)
+    # n=2: EWMA(span=2) over [1.0, 3.0, 5.0] before 2024-05-01
     result = rolling_oop_composite(df, T1, date(2024, 5, 1), n=2)
-    assert result == pytest.approx(4.0)
+    assert result == pytest.approx(4.1111, abs=1e-3)
 
 
 def test_rolling_oop_composite_returns_none_for_no_history():

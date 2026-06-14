@@ -74,6 +74,7 @@ def upsert_player_metrics(
     clearances_per90: float | None = None,
     interceptions_per90: float | None = None,
     ball_recoveries_per90: float | None = None,
+    pressure_final_third_pct: float | None = None,
 ) -> None:
     values = {
         "player_id": player_id,
@@ -85,6 +86,7 @@ def upsert_player_metrics(
         "clearances_per90": clearances_per90,
         "interceptions_per90": interceptions_per90,
         "ball_recoveries_per90": ball_recoveries_per90,
+        "pressure_final_third_pct": pressure_final_third_pct,
         "computed_at": datetime.now(timezone.utc),
     }
     stmt = (
@@ -110,7 +112,14 @@ def upsert_team_metrics(
     interceptions_per90: float | None = None,
     ball_recoveries_per90: float | None = None,
     pressure_success_rate: float | None = None,
+    pressure_final_third_pct: float | None = None,
     oop_composite: float | None = None,
+    opponent_possession_phases: float | None = None,
+    opponent_passing_attempts: float | None = None,
+    press_intensity_adj: float | None = None,
+    interceptions_adj: float | None = None,
+    ball_recoveries_adj: float | None = None,
+    oop_composite_adj: float | None = None,
 ) -> None:
     values = {
         "team_id": team_id,
@@ -123,7 +132,14 @@ def upsert_team_metrics(
         "interceptions_per90": interceptions_per90,
         "ball_recoveries_per90": ball_recoveries_per90,
         "pressure_success_rate": pressure_success_rate,
+        "pressure_final_third_pct": pressure_final_third_pct,
         "oop_composite": oop_composite,
+        "opponent_possession_phases": opponent_possession_phases,
+        "opponent_passing_attempts": opponent_passing_attempts,
+        "press_intensity_adj": press_intensity_adj,
+        "interceptions_adj": interceptions_adj,
+        "ball_recoveries_adj": ball_recoveries_adj,
+        "oop_composite_adj": oop_composite_adj,
         "computed_at": datetime.now(timezone.utc),
     }
     stmt = (

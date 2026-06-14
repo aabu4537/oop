@@ -23,6 +23,7 @@ class Team(Base):
 
     team_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name = Column(String(100), nullable=False, unique=True)
+    confederation = Column(String(20))
     fifa_code = Column(String(3))
     elo_rating = Column(Float)
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
@@ -116,6 +117,7 @@ class PlayerMetric(Base):
     clearances_per90 = Column(Float)
     interceptions_per90 = Column(Float)
     ball_recoveries_per90 = Column(Float)
+    pressure_final_third_pct = Column(Float)
     computed_at = Column(DateTime, server_default=func.now())
 
     player = relationship("Player", back_populates="player_metrics")
@@ -138,7 +140,16 @@ class TeamMetric(Base):
     interceptions_per90 = Column(Float)
     ball_recoveries_per90 = Column(Float)
     pressure_success_rate = Column(Float)
+    pressure_final_third_pct = Column(Float)
     oop_composite = Column(Float)
+    opponent_possession_phases = Column(Float)
+    opponent_passing_attempts = Column(Float)
+    press_intensity_adj = Column(Float)
+    interceptions_adj = Column(Float)
+    ball_recoveries_adj = Column(Float)
+    oop_composite_adj = Column(Float)
+    oop_composite_final = Column(Float)
+    oop_confidence = Column(Float)
     computed_at = Column(DateTime, server_default=func.now())
 
     team = relationship("Team", back_populates="team_metrics")

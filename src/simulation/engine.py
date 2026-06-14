@@ -224,6 +224,28 @@ def run_monte_carlo(
 
 
 # ---------------------------------------------------------------------------
+# Confederation mapping — used to impute OOP for teams with no StatsBomb data
+# ---------------------------------------------------------------------------
+
+# Teams without StatsBomb national-team event data get their confederation's
+# average OOP boost rather than 0, avoiding a systematic bias against
+# well-pressing sides (e.g. Wales, Serbia, Poland) that happen to lack coverage.
+_CONFEDERATION: dict[str, str] = {
+    "Spain": "UEFA",        "Croatia": "UEFA",      "France": "UEFA",
+    "Germany": "UEFA",      "Portugal": "UEFA",     "England": "UEFA",
+    "Netherlands": "UEFA",  "Wales": "UEFA",        "Belgium": "UEFA",
+    "Switzerland": "UEFA",  "Serbia": "UEFA",       "Denmark": "UEFA",
+    "Poland": "UEFA",       "United States": "CONCACAF", "Canada": "CONCACAF",
+    "Mexico": "CONCACAF",   "Jamaica": "CONCACAF",  "Brazil": "CONMEBOL",
+    "Argentina": "CONMEBOL","Colombia": "CONMEBOL", "Ecuador": "CONMEBOL",
+    "Uruguay": "CONMEBOL",  "Morocco": "CAF",       "Senegal": "CAF",
+    "Ghana": "CAF",         "Cameroon": "CAF",      "Tunisia": "CAF",
+    "Japan": "AFC",         "South Korea": "AFC",   "Iran": "AFC",
+    "Australia": "AFC",     "Saudi Arabia": "AFC",
+}
+
+
+# ---------------------------------------------------------------------------
 # DB loader — pulls live Elo + OOP from the database
 # ---------------------------------------------------------------------------
 
@@ -237,8 +259,10 @@ def load_groups_from_db(
     across all teams that have metric data:
         effective_elo = base_elo + sim_oop_elo_scale * oop_zscore
 
-    Teams missing from the DB fall back to their hardcoded values.
-    Teams with no OOP data get a 0 boost (pure Elo).
+    Teams with no StatsBomb data receive their confederation's average boost
+    instead of 0, preventing a systematic penalty against teams simply lacking
+    coverage in the free dataset (e.g. Wales, Serbia, Poland).
+    Teams missing from the DB entirely fall back to hardcoded Elo values.
     """
     from sqlalchemy import text
     from src.db.session import get_session
@@ -253,10 +277,15 @@ def load_groups_from_db(
         ).fetchall()
         elo_map: dict[str, float] = {r.name: r.elo_rating for r in elo_rows if r.elo_rating}
 
-        # Average OOP composite per team (across all their StatsBomb matches)
+        # Prefer confidence-blended final score; fall back through adj → raw.
         oop_rows = session.execute(
             text("""
-                SELECT t.name, AVG(tm.oop_composite) AS avg_oop
+                SELECT t.name,
+                       COALESCE(
+                           AVG(tm.oop_composite_final),
+                           AVG(tm.oop_composite_adj),
+                           AVG(tm.oop_composite)
+                       ) AS avg_oop
                 FROM team_metrics tm
                 JOIN teams t ON t.team_id = tm.team_id
                 WHERE tm.oop_composite IS NOT NULL
@@ -267,7 +296,7 @@ def load_groups_from_db(
         ).fetchall()
         oop_map: dict[str, float] = {r.name: r.avg_oop for r in oop_rows}
 
-    # Z-score OOP across teams that have data
+    # Z-score OOP across teams that have data → Elo-equivalent boost
     oop_boost: dict[str, float] = {}
     if oop_map:
         values = np.array(list(oop_map.values()))
@@ -275,11 +304,31 @@ def load_groups_from_db(
         if sigma > 0:
             for name, val in oop_map.items():
                 oop_boost[name] = _cfg.sim_oop_elo_scale * (val - mu) / sigma
+
+        # Confederation average boost for teams with no data
+        conf_boosts: dict[str, list[float]] = {}
+        for name, boost in oop_boost.items():
+            conf = _CONFEDERATION.get(name)
+            if conf:
+                conf_boosts.setdefault(conf, []).append(boost)
+        conf_avg: dict[str, float] = {c: float(np.mean(v)) for c, v in conf_boosts.items()}
+
+        missing = [n for n in all_names if n not in oop_boost]
+        imputed = []
+        for name in missing:
+            conf = _CONFEDERATION.get(name)
+            avg = conf_avg.get(conf, 0.0) if conf else 0.0
+            oop_boost[name] = avg
+            imputed.append(f"{name} ({conf or '?'} avg={avg:+.1f})")
+
         logger.info(
-            "OOP data found for %d / %d teams — boost range [%.1f, %.1f] Elo pts",
-            len(oop_map), len(all_names),
+            "OOP data: %d teams with data, %d imputed from confederation avg — "
+            "boost range [%.1f, %.1f] Elo pts",
+            len(oop_map), len(imputed),
             min(oop_boost.values()), max(oop_boost.values()),
         )
+        if imputed:
+            logger.info("Imputed: %s", " | ".join(imputed))
     else:
         logger.info("No OOP data in team_metrics — using pure Elo ratings")
 
@@ -297,8 +346,7 @@ def load_groups_from_db(
                 boost = oop_boost.get(name, 0.0)
                 effective_elo = base_elo + boost
                 teams.append(Team(name=name, elo=effective_elo, group=group))
-                if boost:
-                    logger.debug("%s: base=%.1f oop_boost=%.1f → %.1f", name, base_elo, boost, effective_elo)
+                logger.debug("%s: base=%.1f oop_boost=%+.1f → %.1f", name, base_elo, boost, effective_elo)
             elif name in fallback_lookup:
                 logger.warning("'%s' not in DB — using hardcoded Elo %.1f", name, fallback_lookup[name].elo)
                 t = fallback_lookup[name]

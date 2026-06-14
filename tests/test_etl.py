@@ -21,13 +21,22 @@ def test_k_factor_world_cup():
     assert k_factor("FIFA World Cup") == 60.0
 
 def test_k_factor_continental():
+    # Tier-1: EURO, Copa América
     assert k_factor("UEFA Euro") == 50.0
     assert k_factor("Copa América") == 50.0
-    assert k_factor("African Cup of Nations") == 50.0
+    # Tier-2: AFCON, AFC Asian Cup
+    assert k_factor("Africa Cup of Nations") == 24.0
+    assert k_factor("AFC Asian Cup") == 24.0
+    # Tier-3: Gold Cup, CONCACAF Championship
+    assert k_factor("Gold Cup") == 16.0
 
 def test_k_factor_qualifier():
-    assert k_factor("FIFA World Cup qualification") == 40.0
+    assert k_factor("FIFA World Cup qualification") == 40.0   # UEFA/CONMEBOL default
     assert k_factor("UEFA Euro qualification") == 40.0
+    assert k_factor("FIFA World Cup qualification", home_team="Japan", away_team="South Korea") == 18.0  # AFC
+    assert k_factor("FIFA World Cup qualification", home_team="Senegal", away_team="Morocco") == 20.0    # CAF
+    assert k_factor("AFCON qualification") == 18.0
+    assert k_factor("AFC Asian Cup qualification") == 16.0
 
 def test_k_factor_friendly():
     assert k_factor("Friendly") == 20.0

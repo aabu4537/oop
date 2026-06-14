@@ -55,8 +55,8 @@ class ModelConfig:
     elo_k_continental: float = 50.0     # K-factor for major continental championships
     elo_k_qualifier: float = 40.0       # K-factor for WC / continental qualifying
     elo_k_friendly: float = 20.0        # K-factor for friendlies and all other matches
-    elo_decay_rate: float = 0.10        # fraction pulled toward elo_start per year beyond window
-    elo_decay_window_years: int = 4     # years before recency decay kicks in
+    elo_decay_rate: float = 0.07        # fraction pulled toward elo_start per year beyond window
+    elo_decay_window_years: int = 5     # years before recency decay kicks in
 
     # ── OOP composite weights (must sum to 1.0) ───────────────────────────────
     oop_w_press: float = 0.35           # press_intensity weight
