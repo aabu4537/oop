@@ -19,6 +19,8 @@ export interface Match {
   match_id: string;
   home_team_id: string | null;
   away_team_id: string | null;
+  home_team_name: string | null;
+  away_team_name: string | null;
   match_date: string;
   competition: string | null;
   season: string | null;
@@ -62,9 +64,13 @@ export interface SimulateResponse {
 
 export const getTeams = () => apiFetch<Team[]>("/teams").catch(() => [] as Team[]);
 
-export const getMatches = (params?: { competition?: string; season?: string }) => {
+export const getMatches = (params?: { competition?: string; season?: string; limit?: number }) => {
   const qs = new URLSearchParams(
-    Object.fromEntries(Object.entries(params ?? {}).filter(([, v]) => v)) as Record<string, string>
+    Object.fromEntries(
+      Object.entries(params ?? {})
+        .filter(([, v]) => v != null && v !== "")
+        .map(([k, v]) => [k, String(v)])
+    )
   ).toString();
   return apiFetch<Match[]>(`/matches${qs ? `?${qs}` : ""}`).catch(() => [] as Match[]);
 };
@@ -83,3 +89,6 @@ export const simulate = (req: SimulateRequest) =>
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(req),
   });
+
+export const simulateWC2026 = (nSims = 10_000, seed = 42) =>
+  apiFetch<SimulateResponse>(`/simulate/wc2026?n_sims=${nSims}&seed=${seed}`, { method: "POST" });

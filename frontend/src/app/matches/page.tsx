@@ -2,24 +2,23 @@
 
 import { useEffect, useState } from "react";
 import { getMatches, type Match } from "@/lib/api";
+import { getFlag } from "@/lib/flags";
 
 export default function MatchesPage() {
   const [matches, setMatches] = useState<Match[]>([]);
   const [loading, setLoading] = useState(true);
-  const [competition, setCompetition] = useState("");
+  const [competition, setCompetition] = useState("FIFA World Cup");
   const [season, setSeason] = useState("");
-  const [searched, setSearched] = useState(false);
 
   function load(comp: string, sea: string) {
     setLoading(true);
-    setSearched(true);
-    getMatches({ competition: comp || undefined, season: sea || undefined })
+    getMatches({ competition: comp || undefined, season: sea || undefined, limit: 100 })
       .then(setMatches)
       .finally(() => setLoading(false));
   }
 
   useEffect(() => {
-    load("", "");
+    load("FIFA World Cup", "");
   }, []);
 
   return (
@@ -59,15 +58,17 @@ export default function MatchesPage() {
       ) : matches.length === 0 ? (
         <div className="text-center py-20 text-white/40">
           <p className="text-4xl mb-3">📅</p>
-          <p>No matches found. Try different filters or run the ETL pipeline.</p>
+          <p>No matches found. Try different filters.</p>
         </div>
       ) : (
         <div className="space-y-2">
           {matches.map((m) => {
+            const home = m.home_team_name ?? m.home_team_id?.slice(0, 8) ?? "?";
+            const away = m.away_team_name ?? m.away_team_id?.slice(0, 8) ?? "?";
             const score =
               m.home_score != null && m.away_score != null
                 ? `${m.home_score} – ${m.away_score}`
-                : "– vs –";
+                : "vs";
             return (
               <div
                 key={m.match_id}
@@ -77,11 +78,17 @@ export default function MatchesPage() {
                   {m.match_date}
                 </span>
                 <div className="flex-1 grid grid-cols-3 items-center gap-2 text-sm">
-                  <p className="text-white/70 text-right truncate">{m.home_team_id?.slice(0, 8)}…</p>
+                  <div className="flex items-center gap-2 justify-end">
+                    <span className="text-white/70 truncate">{home}</span>
+                    <span className="text-lg leading-none shrink-0">{getFlag(home)}</span>
+                  </div>
                   <p className="text-center font-bold text-white tabular-nums">{score}</p>
-                  <p className="text-white/70 text-left truncate">{m.away_team_id?.slice(0, 8)}…</p>
+                  <div className="flex items-center gap-2 justify-start">
+                    <span className="text-lg leading-none shrink-0">{getFlag(away)}</span>
+                    <span className="text-white/70 truncate">{away}</span>
+                  </div>
                 </div>
-                <div className="text-right shrink-0">
+                <div className="text-right shrink-0 hidden sm:block">
                   <p className="text-white/40 text-xs">{m.competition}</p>
                   <p className="text-white/25 text-xs">{m.season}</p>
                 </div>

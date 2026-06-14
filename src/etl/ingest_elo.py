@@ -18,21 +18,21 @@ Algorithm
 K-factor schedule (before GD multiplier)
     60 — FIFA World Cup final tournament
     50 — Tier-1 continental: UEFA EURO, Copa América (strongest fields)
-    40 — Tier-2 continental: AFCON, AFC Asian Cup
-       — FIFA WC qualifying (UEFA / CONMEBOL zones — competitive fields)
-       — UEFA Euro qualifying, AFCON qualifying
-    35 — UEFA / CONCACAF Nations League; CONMEBOL qualifying (Copa América qual)
-    32 — FIFA WC qualifying (CAF / CONCACAF zones — weaker fields)
-    30 — Tier-3 continental: Gold Cup, CONCACAF Championship (weakest fields)
-       — FIFA WC qualifying (AFC zone — weakest qualifying field)
+    40 — FIFA WC qualifying (UEFA / CONMEBOL zones — competitive fields)
+       — UEFA Euro qualifying
+    35 — UEFA Nations League; Copa América qualifying (CONMEBOL)
+    24 — Tier-2 continental: AFCON, AFC Asian Cup
+    20 — CAF / CONCACAF WC qualifying; CONCACAF Nations League
+    18 — AFC WC qualifying (weakest qualifying field); AFCON qualifying
+    16 — Gold Cup / CONCACAF Championship (Tier-3 continental)
        — AFC / CONCACAF cup qualifying
     20 — Friendlies and all other matches
 
 Reputation floor
-    Teams whose peak Elo in the last 4 years (the non-decayed window) exceeds
-    1750 are protected by a floor of 97% of that peak.  Using the 4-year peak
-    instead of a longer average avoids the decay artifact where match ratings
-    from 5-10 years ago are artificially pulled toward 1500 during processing.
+    Teams whose peak Elo in the last 5 years (the non-decayed window) exceeds
+    1750 are protected by a floor of 98.5% of that peak, capped at current+25.
+    Using the 5-year peak avoids the decay artifact where match ratings from
+    5-10 years ago are artificially pulled toward 1500 during processing.
 
 Soft ceiling
     After all floors are applied, any rating above 1950 is compressed:
@@ -265,11 +265,9 @@ def calculate_elos(rows: list, max_date: date | None = None) -> dict[str, float]
             history.setdefault(h, []).append((row.match_date, ratings[h]))
             history.setdefault(a, []).append((row.match_date, ratings[a]))
 
-    # Reputation floor: prevent a dip from wiping out a team's recent peak.
-    # Use the 4-year window (matches not subject to recency decay) so the peak
-    # reflects actual recent form rather than a decay-deflated historical avg.
-    # The boost is capped at 50 points so a single tournament spike (e.g. a
-    # Copa America final run) does not permanently anchor the floor too high.
+    # Reputation floor: prevent a short-term dip from wiping out a team's recent
+    # peak. Uses the 5-year non-decayed window; boost capped at +25 pts so a
+    # single Copa América run (e.g. Colombia 2024) doesn't anchor the floor too high.
     if max_date:
         cutoff = max_date - timedelta(days=_DECAY_WINDOW * 365)
         for team, current in list(ratings.items()):
