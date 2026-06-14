@@ -31,6 +31,8 @@ _GROUPS_DOUBLE = {
 def _mock_db():
     mock = MagicMock()
     mock.execute.return_value.scalars.return_value.all.return_value = []
+    mock.execute.return_value.all.return_value = []   # matches router uses .all() without .scalars()
+    mock.execute.return_value.first.return_value = None  # matches GET /{id} returns None → 404
     mock.get.return_value = None
     yield mock
 
