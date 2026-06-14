@@ -37,6 +37,18 @@ export interface Prediction {
   away_win_prob: number;
   brier_score: number | null;
   log_loss: number | null;
+  home_team_name: string | null;
+  away_team_name: string | null;
+  match_date: string | null;
+  competition: string | null;
+}
+
+export interface Player {
+  player_id: string;
+  name: string;
+  team_name: string | null;
+  position: string | null;
+  nationality: string | null;
 }
 
 export interface PlayerMetric {
@@ -47,6 +59,11 @@ export interface PlayerMetric {
   run_frequency: number | null;
   space_creation_idx: number | null;
   def_line_engagement: number | null;
+  clearances_per90: number | null;
+  interceptions_per90: number | null;
+  ball_recoveries_per90: number | null;
+  pressure_final_third_pct: number | null;
+  computed_at: string | null;
 }
 
 export interface SimulateRequest {
@@ -78,6 +95,15 @@ export const getMatches = (params?: { competition?: string; season?: string; lim
 export const getPredictions = (modelVersion?: string) => {
   const qs = modelVersion ? `?model_version=${modelVersion}` : "";
   return apiFetch<Prediction[]>(`/predictions${qs}`).catch(() => [] as Prediction[]);
+};
+
+export const searchPlayers = (params: { q?: string; team?: string; limit?: number } = {}) => {
+  const qs = new URLSearchParams(
+    Object.fromEntries(
+      Object.entries(params).filter(([, v]) => v != null && v !== "").map(([k, v]) => [k, String(v)])
+    )
+  ).toString();
+  return apiFetch<Player[]>(`/players${qs ? `?${qs}` : ""}`).catch(() => [] as Player[]);
 };
 
 export const getPlayerMetrics = (playerId: string) =>

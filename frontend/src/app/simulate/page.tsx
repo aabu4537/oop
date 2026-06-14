@@ -7,16 +7,20 @@ import { getFlag } from "@/lib/flags";
 type TeamEntry = { name: string; elo: number };
 type Groups = Record<string, TeamEntry[]>;
 
-// WC 2026 actual draw
+// WC 2026 confirmed draw — 12 groups, 48 teams
 const WC2026_GROUPS: Groups = {
-  A: [{ name: "United States", elo: 1632 }, { name: "Canada", elo: 1738 }, { name: "Mexico", elo: 1789 }, { name: "Jamaica", elo: 1557 }],
-  B: [{ name: "Spain", elo: 2032 }, { name: "Croatia", elo: 1758 }, { name: "Morocco", elo: 1864 }, { name: "Japan", elo: 1832 }],
-  C: [{ name: "France", elo: 1940 }, { name: "Germany", elo: 1840 }, { name: "Portugal", elo: 1842 }, { name: "Senegal", elo: 1839 }],
-  D: [{ name: "Brazil", elo: 1845 }, { name: "Argentina", elo: 1962 }, { name: "Colombia", elo: 1838 }, { name: "Ecuador", elo: 1815 }],
-  E: [{ name: "England", elo: 1919 }, { name: "Netherlands", elo: 1822 }, { name: "Iran", elo: 1771 }, { name: "Wales", elo: 1544 }],
-  F: [{ name: "Belgium", elo: 1770 }, { name: "Switzerland", elo: 1804 }, { name: "Serbia", elo: 1615 }, { name: "Cameroon", elo: 1690 }],
-  G: [{ name: "Uruguay", elo: 1790 }, { name: "South Korea", elo: 1768 }, { name: "Ghana", elo: 1541 }, { name: "Australia", elo: 1762 }],
-  H: [{ name: "Denmark", elo: 1730 }, { name: "Tunisia", elo: 1679 }, { name: "Poland", elo: 1547 }, { name: "Saudi Arabia", elo: 1621 }],
+  A: [{ name: "Mexico", elo: 1789 }, { name: "South Korea", elo: 1768 }, { name: "South Africa", elo: 1520 }, { name: "Czechia", elo: 1680 }],
+  B: [{ name: "Canada", elo: 1738 }, { name: "Switzerland", elo: 1804 }, { name: "Qatar", elo: 1621 }, { name: "Bosnia and Herzegovina", elo: 1610 }],
+  C: [{ name: "Brazil", elo: 1845 }, { name: "Morocco", elo: 1864 }, { name: "Scotland", elo: 1650 }, { name: "Haiti", elo: 1430 }],
+  D: [{ name: "USA", elo: 1632 }, { name: "Australia", elo: 1762 }, { name: "Paraguay", elo: 1620 }, { name: "Türkiye", elo: 1700 }],
+  E: [{ name: "Germany", elo: 1840 }, { name: "Ecuador", elo: 1815 }, { name: "Ivory Coast", elo: 1710 }, { name: "Curaçao", elo: 1350 }],
+  F: [{ name: "Netherlands", elo: 1822 }, { name: "Japan", elo: 1832 }, { name: "Tunisia", elo: 1679 }, { name: "Sweden", elo: 1730 }],
+  G: [{ name: "Belgium", elo: 1770 }, { name: "Iran", elo: 1771 }, { name: "Egypt", elo: 1650 }, { name: "New Zealand", elo: 1480 }],
+  H: [{ name: "Spain", elo: 2032 }, { name: "Uruguay", elo: 1790 }, { name: "Saudi Arabia", elo: 1621 }, { name: "Cabo Verde", elo: 1490 }],
+  I: [{ name: "France", elo: 1940 }, { name: "Senegal", elo: 1839 }, { name: "Norway", elo: 1750 }, { name: "Iraq", elo: 1560 }],
+  J: [{ name: "Argentina", elo: 1962 }, { name: "Austria", elo: 1710 }, { name: "Algeria", elo: 1660 }, { name: "Jordan", elo: 1510 }],
+  K: [{ name: "Portugal", elo: 1842 }, { name: "Colombia", elo: 1838 }, { name: "Uzbekistan", elo: 1540 }, { name: "DR Congo", elo: 1580 }],
+  L: [{ name: "England", elo: 1919 }, { name: "Croatia", elo: 1758 }, { name: "Panama", elo: 1560 }, { name: "Ghana", elo: 1541 }],
 };
 
 const STAGE_LABELS: Record<string, string> = {

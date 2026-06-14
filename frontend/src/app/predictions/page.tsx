@@ -4,12 +4,30 @@ import { useEffect, useState } from "react";
 import { getPredictions, type Prediction } from "@/lib/api";
 import { getFlag } from "@/lib/flags";
 
-const MODELS = ["", "xgb_v1.0", "lr_v1.0"];
+type ModelKey = "" | "xgb_v1.0" | "lr_v1.0";
+
+const MODEL_OPTIONS: { value: ModelKey; label: string }[] = [
+  { value: "", label: "All models" },
+  { value: "xgb_v1.0", label: "XGBoost" },
+  { value: "lr_v1.0", label: "Linear Regression" },
+];
+
+const MODEL_DESCRIPTIONS: Record<string, string> = {
+  "xgb_v1.0":
+    "XGBoost is a gradient boosting model that builds an ensemble of decision trees to capture non-linear relationships between team metrics and match results. It generally outperforms Linear Regression on this dataset by learning complex interactions between Elo ratings, pressing intensity, and tournament context.",
+  "lr_v1.0":
+    "Linear Regression predicts match outcomes by finding a weighted combination of team strength (Elo rating) and out-of-possession metrics. It is fast, interpretable, and performs well when the relationship between features and outcomes is roughly linear. Best used as a baseline to compare against more complex models.",
+};
+
+const MODEL_DISPLAY: Record<string, string> = {
+  "xgb_v1.0": "XGBoost",
+  "lr_v1.0": "Linear Regression",
+};
 
 function ProbBar({ label, value, color }: { label: string; value: number; color: string }) {
   return (
     <div className="flex items-center gap-2 text-xs">
-      <span className="text-white/40 w-16 shrink-0">{label}</span>
+      <span className="text-white/40 w-16 shrink-0 truncate">{label}</span>
       <div className="flex-1 bg-white/10 rounded-full h-1.5 overflow-hidden">
         <div className={`h-full rounded-full ${color}`} style={{ width: `${value * 100}%` }} />
       </div>
@@ -20,10 +38,10 @@ function ProbBar({ label, value, color }: { label: string; value: number; color:
 
 export default function PredictionsPage() {
   const [preds, setPreds] = useState<Prediction[]>([]);
-  const [model, setModel] = useState("");
+  const [model, setModel] = useState<ModelKey>("");
   const [loading, setLoading] = useState(true);
 
-  function load(mv: string) {
+  function load(mv: ModelKey) {
     setLoading(true);
     getPredictions(mv || undefined)
       .then(setPreds)
@@ -32,6 +50,8 @@ export default function PredictionsPage() {
 
   useEffect(() => { load(""); }, []);
 
+  const description = model ? MODEL_DESCRIPTIONS[model] : null;
+
   return (
     <main className="container mx-auto px-4 py-10 max-w-5xl">
       <div className="mb-8">
@@ -39,16 +59,22 @@ export default function PredictionsPage() {
         <p className="text-white/40 mt-1 text-sm">Win probabilities from trained models</p>
       </div>
 
-      <div className="flex gap-3 mb-8">
+      <div className="mb-6 space-y-3">
         <select
           value={model}
-          onChange={(e) => { setModel(e.target.value); load(e.target.value); }}
+          onChange={(e) => { const v = e.target.value as ModelKey; setModel(v); load(v); }}
           className="bg-white/5 border border-white/10 rounded-lg px-4 py-2.5 text-sm text-white focus:outline-none focus:border-white/25 appearance-none cursor-pointer"
         >
-          {MODELS.map((m) => (
-            <option key={m} value={m} className="bg-neutral-900">{m || "All models"}</option>
+          {MODEL_OPTIONS.map((o) => (
+            <option key={o.value} value={o.value} className="bg-neutral-900">{o.label}</option>
           ))}
         </select>
+
+        {description && (
+          <p className="text-white/45 text-sm leading-relaxed bg-white/5 border border-white/8 rounded-xl px-4 py-3 max-w-2xl">
+            {description}
+          </p>
+        )}
       </div>
 
       {loading ? (
@@ -60,8 +86,8 @@ export default function PredictionsPage() {
       ) : preds.length === 0 ? (
         <div className="text-center py-20 text-white/40">
           <p className="text-4xl mb-3">📊</p>
-          <p>No predictions found. Run the modeling pipeline first.</p>
-          <code className="mt-3 block text-xs text-white/25">python3.11 -m src.models.predict</code>
+          <p>No predictions found for this model.</p>
+          <code className="mt-3 block text-xs text-white/25">python3.11 -m src.models.predict --model lr_v1.0</code>
         </div>
       ) : (
         <div className="space-y-3">
@@ -74,7 +100,7 @@ export default function PredictionsPage() {
                 className="bg-white/5 border border-white/8 rounded-xl px-5 py-4 hover:bg-white/8 transition-colors"
               >
                 <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-3 flex-wrap">
                     <div className="flex items-center gap-1.5">
                       <span className="text-xl leading-none">{getFlag(home)}</span>
                       <span className="text-white/80 text-sm font-medium">{home}</span>
@@ -85,9 +111,9 @@ export default function PredictionsPage() {
                       <span className="text-white/80 text-sm font-medium">{away}</span>
                     </div>
                   </div>
-                  <div className="text-right shrink-0">
+                  <div className="text-right shrink-0 ml-2">
                     <span className="text-xs bg-white/10 text-white/50 rounded-full px-2 py-0.5">
-                      {p.model_version}
+                      {MODEL_DISPLAY[p.model_version] ?? p.model_version}
                     </span>
                     {p.match_date && (
                       <p className="text-white/25 text-xs mt-1">{p.match_date}</p>
