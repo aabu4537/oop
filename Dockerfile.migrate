@@ -1,10 +1,13 @@
 FROM python:3.11-slim
 
 WORKDIR /app
-COPY pyproject.toml .
-RUN pip install --no-cache-dir -e .
+COPY requirements.migrate.txt .
+RUN pip install --no-cache-dir -r requirements.migrate.txt
 
 COPY alembic/ alembic/
 COPY alembic.ini alembic.ini
 COPY src/ src/
+COPY pyproject.toml .
+RUN pip install --no-cache-dir --no-deps -e .
+
 CMD ["alembic", "upgrade", "head"]
