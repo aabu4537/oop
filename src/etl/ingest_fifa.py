@@ -30,6 +30,13 @@ _TIMEOUT = 30
 _RETRY_BACKOFF = [1, 2, 4]
 
 
+def _parse_score(s: str) -> int | None:
+    try:
+        return int(s)
+    except (ValueError, TypeError):
+        return None
+
+
 def run_ingestion(url: str = _RESULTS_CSV_URL, force: bool = False) -> None:  # noqa: ARG001 — force accepted for CLI consistency
     with get_session() as session:
         with pipeline_run(session, "fifa_results_ingest") as run:
@@ -75,8 +82,8 @@ def _load_rows(session, rows: list[dict]) -> int:
             home_name = row["home_team"].strip()
             away_name = row["away_team"].strip()
             match_date = date.fromisoformat(row["date"])
-            home_score = int(row["home_score"]) if row["home_score"] else None
-            away_score = int(row["away_score"]) if row["away_score"] else None
+            home_score = _parse_score(row["home_score"])
+            away_score = _parse_score(row["away_score"])
             competition = row.get("tournament", "").strip() or None
             neutral = row.get("neutral", "FALSE").strip().upper() == "TRUE"
         except (KeyError, ValueError) as exc:

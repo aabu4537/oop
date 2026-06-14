@@ -81,6 +81,59 @@ def build_feature_matrix(session: Session) -> pd.DataFrame:
     return df[["match_id", "match_date", "outcome"] + FEATURE_COLS]
 
 
+_FUTURE_SQL = text("""
+    SELECT
+        m.match_id,
+        m.match_date,
+        m.competition,
+        ht.name  AS home_team_name,
+        at_.name AS away_team_name,
+        COALESCE(ht.elo_rating,  1500.0) AS home_elo,
+        COALESCE(at_.elo_rating, 1500.0) AS away_elo,
+        htm.oop_composite           AS home_oop,
+        atm.oop_composite           AS away_oop,
+        htm.pressure_success_rate   AS home_psr,
+        atm.pressure_success_rate   AS away_psr,
+        htm.avg_press_intensity     AS home_press,
+        atm.avg_press_intensity     AS away_press,
+        htm.interceptions_per90     AS home_intercept,
+        atm.interceptions_per90     AS away_intercept,
+        htm.ball_recoveries_per90   AS home_recovery,
+        atm.ball_recoveries_per90   AS away_recovery
+    FROM matches m
+    JOIN teams ht   ON m.home_team_id = ht.team_id
+    JOIN teams at_  ON m.away_team_id = at_.team_id
+    LEFT JOIN team_metrics htm ON m.match_id = htm.match_id
+                               AND htm.team_id = m.home_team_id
+    LEFT JOIN team_metrics atm ON m.match_id = atm.match_id
+                               AND atm.team_id = m.away_team_id
+    WHERE m.home_score IS NULL
+      AND m.away_score IS NULL
+    ORDER BY m.match_date
+""")
+
+
+def build_future_feature_matrix(session: Session) -> pd.DataFrame:
+    """Return DataFrame with FEATURE_COLS + metadata for unplayed matches.
+
+    Includes home_team_name, away_team_name, competition and match_date
+    so predict.py can store them alongside predictions.
+    OOP columns median-imputed from historical data when missing.
+    """
+    result = session.execute(_FUTURE_SQL)
+    df = pd.DataFrame(result.fetchall(), columns=list(result.keys()))
+
+    if df.empty:
+        return df
+
+    df["elo_diff"] = df["home_elo"] - df["away_elo"]
+
+    for col in _OOP_COLS:
+        df[col] = df[col].fillna(0.0)
+
+    return df[["match_id", "match_date", "competition", "home_team_name", "away_team_name"] + FEATURE_COLS]
+
+
 def encode_outcome(home_score: pd.Series, away_score: pd.Series) -> pd.Series:
     """Encode match result as integer class (0=away win, 1=draw, 2=home win)."""
     return pd.Series(

@@ -46,7 +46,7 @@ export default function PredictionsPage() {
   useEffect(() => {
     setLoading(true);
     // Load a large batch; filter client-side to WC 2026 + upcoming
-    getPredictions(undefined, 2000)
+    getPredictions(undefined, 1000)
       .then(setAll)
       .finally(() => setLoading(false));
   }, []);

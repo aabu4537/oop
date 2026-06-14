@@ -19,7 +19,12 @@ from src.db.models import Prediction
 from src.db.session import get_session
 from src.etl.loaders import upsert_prediction
 from src.etl.pipeline_logger import pipeline_run
-from src.models.features import FEATURE_COLS, brier_score_multiclass, build_feature_matrix
+from src.models.features import (
+    FEATURE_COLS,
+    brier_score_multiclass,
+    build_feature_matrix,
+    build_future_feature_matrix,
+)
 from src.models.train import ARTIFACTS_DIR, XGB_VERSION
 
 logger = logging.getLogger(__name__)
@@ -80,6 +85,33 @@ def run_predictions(model_version: str = XGB_VERSION) -> None:
                 "Persisted %d predictions — Brier: %.4f  Log-Loss: %.4f",
                 len(df), brier, ll,
             )
+
+            # ── Future fixtures (no outcome yet) ──────────────────────────────
+            future_df = build_future_feature_matrix(session)
+            already_predicted_future = {
+                r[0]
+                for r in session.query(Prediction.match_id).filter_by(model_version=model_version)
+            }
+            future_df = future_df[~future_df["match_id"].isin(already_predicted_future)].reset_index(drop=True)
+
+            if not future_df.empty:
+                X_future = future_df[FEATURE_COLS].to_numpy()
+                probs_future: np.ndarray = model.predict_proba(X_future)
+
+                for i, row in future_df.iterrows():
+                    upsert_prediction(
+                        session,
+                        match_id=row["match_id"],
+                        model_version=model_version,
+                        home_win_prob=float(probs_future[i, 2]),
+                        draw_prob=float(probs_future[i, 1]),
+                        away_win_prob=float(probs_future[i, 0]),
+                        brier_score=None,
+                        log_loss=None,
+                    )
+
+                run.rows_inserted += len(future_df)
+                logger.info("Persisted %d future-fixture predictions", len(future_df))
 
 
 if __name__ == "__main__":
