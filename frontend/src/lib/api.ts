@@ -92,9 +92,11 @@ export const getMatches = (params?: { competition?: string; season?: string; lim
   return apiFetch<Match[]>(`/matches${qs ? `?${qs}` : ""}`).catch(() => [] as Match[]);
 };
 
-export const getPredictions = (modelVersion?: string) => {
-  const qs = modelVersion ? `?model_version=${modelVersion}` : "";
-  return apiFetch<Prediction[]>(`/predictions${qs}`).catch(() => [] as Prediction[]);
+export const getPredictions = (modelVersion?: string, limit = 100) => {
+  const params = new URLSearchParams();
+  if (modelVersion) params.set("model_version", modelVersion);
+  params.set("limit", String(limit));
+  return apiFetch<Prediction[]>(`/predictions?${params}`).catch(() => [] as Prediction[]);
 };
 
 export const searchPlayers = (params: { q?: string; team?: string; limit?: number } = {}) => {
