@@ -4,24 +4,38 @@ import { useState } from "react";
 import { simulate, type SimulateResponse } from "@/lib/api";
 import { getFlag } from "@/lib/flags";
 
-// ── WC 2026 confirmed draw — Elo from live DB ────────────────────────────────
-// Names match the DB exactly so the simulation engine resolves them correctly.
+// ── WC 2026 confirmed draw (display only) ────────────────────────────────────
+
+const WC2026_DRAW: Record<string, string[]> = {
+  A: ["Mexico", "South Korea", "South Africa", "Czechia"],
+  B: ["Canada", "Switzerland", "Qatar", "Bosnia and Herzegovina"],
+  C: ["Brazil", "Morocco", "Scotland", "Haiti"],
+  D: ["USA", "Australia", "Paraguay", "Türkiye"],
+  E: ["Germany", "Ecuador", "Ivory Coast", "Curaçao"],
+  F: ["Netherlands", "Japan", "Tunisia", "Sweden"],
+  G: ["Belgium", "Iran", "Egypt", "New Zealand"],
+  H: ["Spain", "Uruguay", "Saudi Arabia", "Cabo Verde"],
+  I: ["France", "Senegal", "Norway", "Iraq"],
+  J: ["Argentina", "Austria", "Algeria", "Jordan"],
+  K: ["Portugal", "Colombia", "Uzbekistan", "DR Congo"],
+  L: ["England", "Croatia", "Panama", "Ghana"],
+};
+
+// ── Simulation groups — 8 groups of 4 (engine requires power-of-2 bracket) ──
+// Contains the 32 highest-Elo confirmed WC 2026 teams, Elo from live DB.
+// The 16 weakest confirmed teams (Qatar, Bosnia, Haiti, etc.) are excluded.
 
 type TeamEntry = { name: string; elo: number };
 
-const WC2026_GROUPS: Record<string, TeamEntry[]> = {
-  A: [{ name: "Mexico", elo: 1789 }, { name: "South Korea", elo: 1768 }, { name: "South Africa", elo: 1606 }, { name: "Czechia", elo: 1573 }],
-  B: [{ name: "Canada", elo: 1711 }, { name: "Switzerland", elo: 1814 }, { name: "Qatar", elo: 1476 }, { name: "Bosnia and Herzegovina", elo: 1498 }],
-  C: [{ name: "Brazil", elo: 1845 }, { name: "Morocco", elo: 1864 }, { name: "Scotland", elo: 1641 }, { name: "Haiti", elo: 1629 }],
-  D: [{ name: "USA", elo: 1668 }, { name: "Australia", elo: 1762 }, { name: "Paraguay", elo: 1623 }, { name: "Türkiye", elo: 1856 }],
-  E: [{ name: "Germany", elo: 1840 }, { name: "Ecuador", elo: 1815 }, { name: "Ivory Coast", elo: 1765 }, { name: "Curaçao", elo: 1530 }],
-  F: [{ name: "Netherlands", elo: 1822 }, { name: "Japan", elo: 1832 }, { name: "Tunisia", elo: 1656 }, { name: "Sweden", elo: 1595 }],
-  G: [{ name: "Belgium", elo: 1770 }, { name: "Iran", elo: 1771 }, { name: "Egypt", elo: 1729 }, { name: "New Zealand", elo: 1591 }],
-  H: [{ name: "Spain", elo: 2032 }, { name: "Uruguay", elo: 1741 }, { name: "Saudi Arabia", elo: 1600 }, { name: "Cabo Verde", elo: 1604 }],
-  I: [{ name: "France", elo: 1940 }, { name: "Senegal", elo: 1839 }, { name: "Norway", elo: 1811 }, { name: "Iraq", elo: 1646 }],
-  J: [{ name: "Argentina", elo: 1962 }, { name: "Austria", elo: 1742 }, { name: "Algeria", elo: 1808 }, { name: "Jordan", elo: 1646 }],
-  K: [{ name: "Portugal", elo: 1842 }, { name: "Colombia", elo: 1838 }, { name: "Uzbekistan", elo: 1689 }, { name: "DR Congo", elo: 1668 }],
-  L: [{ name: "England", elo: 1919 }, { name: "Croatia", elo: 1758 }, { name: "Panama", elo: 1692 }, { name: "Ghana", elo: 1526 }],
+const SIM_GROUPS: Record<string, TeamEntry[]> = {
+  1: [{ name: "Spain",        elo: 2032 }, { name: "Germany",      elo: 1840 }, { name: "Algeria",      elo: 1808 }, { name: "Egypt",         elo: 1729 }],
+  2: [{ name: "Argentina",    elo: 1962 }, { name: "Senegal",      elo: 1839 }, { name: "Mexico",       elo: 1789 }, { name: "Austria",       elo: 1742 }],
+  3: [{ name: "France",       elo: 1940 }, { name: "Colombia",     elo: 1838 }, { name: "Belgium",      elo: 1770 }, { name: "Uruguay",       elo: 1741 }],
+  4: [{ name: "England",      elo: 1919 }, { name: "Japan",        elo: 1832 }, { name: "Iran",         elo: 1771 }, { name: "Canada",        elo: 1711 }],
+  5: [{ name: "Morocco",      elo: 1864 }, { name: "Netherlands",  elo: 1822 }, { name: "South Korea",  elo: 1768 }, { name: "Panama",        elo: 1692 }],
+  6: [{ name: "Türkiye",      elo: 1856 }, { name: "Norway",       elo: 1811 }, { name: "Ivory Coast",  elo: 1765 }, { name: "Uzbekistan",    elo: 1689 }],
+  7: [{ name: "Brazil",       elo: 1845 }, { name: "Ecuador",      elo: 1815 }, { name: "Australia",    elo: 1762 }, { name: "DR Congo",      elo: 1668 }],
+  8: [{ name: "Portugal",     elo: 1842 }, { name: "Switzerland",  elo: 1814 }, { name: "Croatia",      elo: 1758 }, { name: "USA",           elo: 1668 }],
 };
 
 const STAGE_ORDER = ["group_stage", "round_of_32", "round_of_16", "quarter_final", "semi_final", "final", "champion"];
@@ -109,7 +123,7 @@ export default function GroupsPage() {
     setLoading(true);
     setError("");
     try {
-      const res = await simulate({ groups: WC2026_GROUPS, n_sims: nSims, seed });
+      const res = await simulate({ groups: SIM_GROUPS, n_sims: nSims, seed });
       setResult(res);
     } catch (err) {
       if (err instanceof TypeError && err.message.includes("fetch")) {
@@ -133,17 +147,16 @@ export default function GroupsPage() {
 
       {/* Groups grid */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 mb-10">
-        {Object.entries(WC2026_GROUPS).map(([letter, teams]) => (
+        {Object.entries(WC2026_DRAW).map(([letter, teams]) => (
           <div key={letter} className="bg-white/5 border border-white/8 rounded-xl p-4">
             <p className="text-white/30 text-xs font-semibold uppercase tracking-widest mb-3">
               Group {letter}
             </p>
             <div className="space-y-2">
-              {teams.map((t) => (
-                <div key={t.name} className="flex items-center gap-2">
-                  <span className="text-base leading-none shrink-0">{getFlag(t.name)}</span>
-                  <span className="text-white/75 text-xs truncate">{t.name}</span>
-                  <span className="text-white/20 text-xs tabular-nums ml-auto">{t.elo}</span>
+              {teams.map((name) => (
+                <div key={name} className="flex items-center gap-2">
+                  <span className="text-base leading-none shrink-0">{getFlag(name)}</span>
+                  <span className="text-white/75 text-xs truncate">{name}</span>
                 </div>
               ))}
             </div>
@@ -194,7 +207,7 @@ export default function GroupsPage() {
           </button>
         </div>
         <p className="text-white/25 text-xs mt-3">
-          Poisson goal model · Live Elo + OOP composites from DB · {nSims.toLocaleString()} Monte Carlo runs
+          Poisson goal model · {nSims.toLocaleString()} Monte Carlo runs · 32 highest-rated confirmed teams
         </p>
       </div>
 
