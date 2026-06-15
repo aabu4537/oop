@@ -33,25 +33,28 @@ function formatMatchDate(iso: string): string {
 }
 
 // ── OOP scoring ───────────────────────────────────────────────────────────────
-// Calibrated to global DB ranges (0→max from actual data):
-//   press_intensity 0→71, def_line_engagement 0→26.8,
-//   interceptions_per90 0→11.5, ball_recoveries_per90 0→18.4,
-//   pressure_final_third_pct 0→1 (proportion, not %)
+// Ceiling = P95 of each metric across all player-match rows in the DB.
+// Using the absolute max skews scores because extreme values come from
+// short cameos (e.g. Tadić: 71 press/90 in 10 minutes). A player at P95
+// earns ~100%; anyone above is capped at 100%.
+//
+// pressure_final_third_pct weight is minimal: it measures WHERE you press,
+// not HOW MUCH, and systematically under-rates DMs/CBs who defend in depth.
 
 const OOP_WEIGHTS = {
-  press_intensity: 0.30,
-  def_line_engagement: 0.25,
-  pressure_final_third_pct: 0.20,
-  interceptions_per90: 0.15,
-  ball_recoveries_per90: 0.10,
+  press_intensity: 0.35,
+  def_line_engagement: 0.15,
+  pressure_final_third_pct: 0.05,
+  interceptions_per90: 0.25,
+  ball_recoveries_per90: 0.20,
 } as const;
 
 const GLOBAL_MAX: Record<keyof typeof OOP_WEIGHTS, number> = {
-  press_intensity: 71,
-  def_line_engagement: 27,
+  press_intensity: 27,       // P95
+  def_line_engagement: 11.6, // P95
   pressure_final_third_pct: 1,
-  interceptions_per90: 12,
-  ball_recoveries_per90: 19,
+  interceptions_per90: 2.9,  // P95
+  ball_recoveries_per90: 7.6, // P95
 };
 
 type OopKey = keyof typeof OOP_WEIGHTS;
@@ -145,7 +148,7 @@ export default function PlayersPage() {
 
   // Load all matches once for match context lookup
   useEffect(() => {
-    getMatches({ limit: 2000 }).then((ms) => {
+    getMatches({ limit: 1000 }).then((ms) => {
       setMatchMap(new Map(ms.map((m) => [m.match_id, m])));
     });
   }, []);
